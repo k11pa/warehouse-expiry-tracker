@@ -17,7 +17,7 @@ creds_info = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
 CLIENT = gspread.authorize(creds)
 
-SHEET_ID = "https://docs.google.com/spreadsheets/d/1q8RdFS_XBl0N7QhdBITQzCQXCLGEo2kkLEpDc3Jn5BM/edit"   # ←←← Замени это! (ниже объясню как взять)
+SHEET_ID = "1q8RdFS_XBl0N7QhdBITQzCQXCLGEo2kkLEpDc3Jn5BM"
 sheet = CLIENT.open_by_key(SHEET_ID)
 
 # Функции работы с листами (как раньше)
