@@ -174,21 +174,3 @@ with tab2:
 
 with tab3:
     # (твой текущий код для приемки и печати, не меняем пока)
-
-with tab4:
-st.header("Товары в базе")
-products = get_products()
-if not products.empty:
-    st.dataframe(products)
-else:
-    st.info("База пуста.")
-
-with tab5:
-    st.header("Настройки цветов")
-    settings = get_settings()
-    yellow = st.number_input("Жёлтый: менее месяцев", min_value=1, value=int(settings.get('YellowMonths', 3)))
-    red = st.number_input("Красный: менее месяцев", min_value=1, value=int(settings.get('RedMonths', 2)))
-    if st.button("Сохранить"):
-        new_settings = {'YellowMonths': yellow, 'RedMonths': red}
-        update_settings(new_settings)
-        st.success("Сохранено!")
