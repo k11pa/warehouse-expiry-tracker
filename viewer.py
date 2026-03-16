@@ -7,7 +7,7 @@ from dateutil.relativedelta import relativedelta
 
 # Подключение — имя секции совпадает с твоим основным приложением
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds_info = st.secrets["google_credentials"]
+creds_info = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
 CLIENT = gspread.authorize(creds)
 SHEET_ID = "1q8RdFS_XBl0N7QhdBITQzCQXCLGEo2kkLEpDc3Jn5BM"
