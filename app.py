@@ -176,12 +176,12 @@ with tab3:
     # (твой текущий код для приемки и печати, не меняем пока)
 
 with tab4:
-    st.header("Товары в базе")
-    products = get_products()
-    if not products.empty:
-        st.dataframe(products)
-    else:
-        st.info("База пуста.")
+st.header("Товары в базе")
+products = get_products()
+if not products.empty:
+    st.dataframe(products)
+else:
+    st.info("База пуста.")
 
 with tab5:
     st.header("Настройки цветов")
