@@ -113,22 +113,49 @@ with tab2:
     products = get_products()
     
     input_method = st.radio("Как найти товар?", 
-                            ["Сканировать штрих-код", "Поиск по имени", "Ввести штрих-код вручную"])
+                            ["Live-сканирование камерой", "Поиск по имени", "Ввести штрих-код вручную"])
     
     barcode = None
     name = "Неизвестный товар"
     
-    if input_method == "Сканировать штрих-код":
-        st.info("📷 Наведи камеру на штрих-код")
-        camera_image = st.camera_input("Сканировать")
-        if camera_image:
-            img = Image.open(camera_image)
-            decoded = decode(img)
-            if decoded:
-                barcode = decoded[0].data.decode('utf-8')
-                st.success(f"✅ Распознано: **{barcode}**")
-            else:
-                st.error("❌ Не распознано. Попробуй другой угол или выбери ручной ввод.")
+    if input_method == "Live-сканирование камерой":
+        st.info("Наведи камеру на штрих-код — распознавание происходит автоматически")
+        
+        # HTML + JS для live-сканирования с html5-qrcode
+        html_code = """
+        <div id="reader" style="width:100%; height:400px;"></div>
+        <p id="result"></p>
+        
+        <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+        <script>
+        const html5QrCode = new Html5Qrcode("reader");
+        const config = { fps: 10, qrbox: {width: 250, height: 250} };
+        
+        html5QrCode.start(
+            { facingMode: "environment" },
+            config,
+            (decodedText, decodedResult) => {
+                document.getElementById("result").innerText = "Распознано: " + decodedText;
+                // Отправляем результат в Streamlit (через query-параметр или session_state, но проще через кнопку ниже)
+                window.parent.postMessage({type: "streamlit:barcode", value: decodedText}, "*");
+            },
+            (errorMessage) => {
+                // console.log(errorMessage);
+            }
+        ).catch((err) => {
+            document.getElementById("result").innerText = "Ошибка запуска камеры: " + err;
+        });
+        </script>
+        """
+        
+        st.components.v1.html(html_code, height=450)
+        
+        # Пока JS не может напрямую менять session_state, просим пользователя подтвердить
+        detected_barcode = st.text_input("Если код распознан выше — вставь его сюда или нажми кнопку ниже", "")
+        if st.button("Использовать распознанный код"):
+            barcode = detected_barcode.strip()
+            if barcode:
+                st.success(f"Используем: {barcode}")
     
     elif input_method == "Поиск по имени":
         if not products.empty:
@@ -143,7 +170,7 @@ with tab2:
     elif input_method == "Ввести штрих-код вручную":
         barcode = st.text_input("Введи штрих-код")
     
-    # === Если штрих-код есть — продолжаем ===
+    # Общая логика добавления (если barcode получен любым способом)
     if barcode:
         # Защита от пустой базы
         if not products.empty and barcode in products['Barcode'].values:
@@ -155,10 +182,9 @@ with tab2:
         expiration = st.text_input("Срок годности (ДД.ММ.ГГ)", placeholder="15.12.26")
         
         if st.button("✅ Добавить в работу", type="primary"):
-            if not expiration:
+            if not expiration.strip():
                 st.error("Укажи срок годности!")
             else:
-                # Добавляем / обновляем
                 new_row = pd.DataFrame({'Barcode': [barcode], 'Name': [name], 'Expiration': [expiration]})
                 current = get_inwork()
                 
@@ -168,5 +194,5 @@ with tab2:
                 else:
                     update_inwork(pd.concat([current, new_row], ignore_index=True))
                 
-                st.success("✅ Товар добавлен в работу!")
+                st.success("Товар добавлен в работу!")
                 st.balloons()
