@@ -79,8 +79,8 @@ with tab2:
 
     products = get_products()
     
-    # Поле ввода с авто-фокусом
-    barcode_input = st.text_input("Введи последние 6 цифр или полный штрих-код", key="barcode_input", autofocus=True)
+    # Поле ввода — без autofocus, чтобы избежать TypeError
+    barcode_input = st.text_input("Введи последние 6 цифр или полный штрих-код", key="barcode_input")
     
     barcode = barcode_input.strip() if barcode_input else None
     
@@ -178,7 +178,7 @@ with tab1:
     else:
         st.info("Пока нет товаров в работе.")
 
-# Остальные вкладки (пока заглушки)
+# Остальные вкладки (заглушки)
 with tab3:
     st.header("Приемка + Печать")
     st.info("Функционал в разработке")
@@ -191,4 +191,4 @@ with tab5:
     st.header("Настройки")
     st.info("Функционал в разработке")
 
-st.sidebar.info("Версия 1.1 — разработано с помощью Grok")
+st.sidebar.info("Версия 1.2 — разработано с помощью Grok")
