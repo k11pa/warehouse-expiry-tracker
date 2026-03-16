@@ -5,9 +5,9 @@ import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-# Подключение к базе (точно такое же, как в app.py)
+# Подключение — имя секции совпадает с твоим основным приложением
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds_info = st.secrets["google_credentials"]  # ← если здесь ошибка — замени на "gcp_service_account"
+creds_info = st.secrets["google_credentials"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
 CLIENT = gspread.authorize(creds)
 SHEET_ID = "1q8RdFS_XBl0N7QhdBITQzCQXCLGEo2kkLEpDc3Jn5BM"
@@ -40,21 +40,22 @@ def get_color(exp_str, settings):
     red = int(settings.get('RedMonths', 2))
     yellow = int(settings.get('YellowMonths', 3))
     if months_left <= 0:
-        return "#ffcccc"  # просрочен
+        return "#ffcccc"   # просрочен
     if months_left < red:
-        return "#ff9999"  # красный
+        return "#ff9999"   # красный
     if months_left < yellow:
-        return "#ffff99"  # жёлтый
-    return "#ffffff"  # белый
+        return "#ffff99"   # жёлтый
+    return "#ffffff"       # белый
 
-# Интерфейс — только для просмотра
-st.set_page_config(page_title="Отчёт по срокам — только просмотр", layout="wide")
-st.title("Товары в работе")
-st.markdown("Актуальный список товаров на 0-м этаже. Обновляется автоматически.")
+# Интерфейс
+st.set_page_config(page_title="Отчёт по срокам в работе", layout="wide")
+st.title("Товары в работе — отчёт для руководства")
+st.markdown("Обновляется автоматически. Выбери фильтр ниже.")
 
+# Фильтр по срочности
 filter_option = st.selectbox(
-    "Показать:",
-    ["Всё сразу", "Только красные (критические)", "Только жёлтые", "Только нормальные (зелёные)"],
+    "Показать товары:",
+    ["Всё сразу", "Только красные (критические)", "Только жёлтые", "Только зелёные (нормальные сроки)"],
     index=0
 )
 
@@ -83,14 +84,13 @@ if not inwork.empty:
         filtered = filtered[filtered['Color'].isin(["#ff9999", "#ffcccc"])]
     elif filter_option == "Только жёлтые":
         filtered = filtered[filtered['Color'] == "#ffff99"]
-    elif filter_option == "Только нормальные (зелёные)":
+    elif filter_option == "Только зелёные (нормальные сроки)":
         filtered = filtered[filtered['Color'] == "#ffffff"]
 
-    # Сортировка от меньшей даты к большей (ближайшие сверху)
+    # Сортировка: от меньшей даты к большей (ближайшие сверху)
     filtered = filtered.sort_values(by='ExpDate')
 
-    # Вывод списка
-    st.markdown(f"**Найдено товаров: {len(filtered)}**")
+    st.markdown(f"**Найдено товаров: {len(filtered)}** (от ближайших сроков к дальним)")
 
     for _, row in filtered.iterrows():
         bg = row['Color']
