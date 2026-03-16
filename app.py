@@ -112,79 +112,61 @@ with tab2:
     
     products = get_products()
     
-    # Выбор способа ввода товара
-    input_method = st.radio("Как найти товар?", ["Сканировать штрих-код", "Поиск по имени", "Ввести штрих-код вручную"])
+    input_method = st.radio("Как найти товар?", 
+                            ["Сканировать штрих-код", "Поиск по имени", "Ввести штрих-код вручную"])
     
     barcode = None
+    name = "Неизвестный товар"
     
     if input_method == "Сканировать штрих-код":
-        st.info("Наведи камеру на штрих-код (разреши доступ к камере в браузере)")
+        st.info("📷 Наведи камеру на штрих-код")
         camera_image = st.camera_input("Сканировать")
-        if camera_image is not None:
+        if camera_image:
             img = Image.open(camera_image)
-            decoded_objects = decode(img)
-            if decoded_objects:
-                barcode = decoded_objects[0].data.decode('utf-8')
-                st.success(f"Распознано: **{barcode}**")
+            decoded = decode(img)
+            if decoded:
+                barcode = decoded[0].data.decode('utf-8')
+                st.success(f"✅ Распознано: **{barcode}**")
             else:
-                st.error("Штрих-код не распознан. Попробуй другой угол или введи вручную.")
+                st.error("❌ Не распознано. Попробуй другой угол или выбери ручной ввод.")
     
     elif input_method == "Поиск по имени":
         if not products.empty:
-            product_names = products['Name'].astype(str).tolist()
-            selected_name = st.selectbox("Выбери товар из базы", [""] + product_names)
-            if selected_name and selected_name != "":
-                barcode_row = products[products['Name'] == selected_name]
-                if not barcode_row.empty:
-                    barcode = barcode_row['Barcode'].iloc[0]
-                    st.info(f"Выбран товар: **{selected_name}** (штрих-код: {barcode})")
+            selected = st.selectbox("Выбери товар", [""] + products['Name'].astype(str).tolist())
+            if selected:
+                row = products[products['Name'] == selected].iloc[0]
+                barcode = row['Barcode']
+                name = row['Name']
         else:
-            st.warning("База товаров пуста. Добавь товары во вкладке 'Товары'.")
+            st.warning("База товаров пуста. Добавь товары во вкладке «Товары».")
     
     elif input_method == "Ввести штрих-код вручную":
         barcode = st.text_input("Введи штрих-код")
     
-    # Если штрих-код найден — показываем поля
+    # === Если штрих-код есть — продолжаем ===
     if barcode:
-        # Ищем имя товара в базе
-        name = "Неизвестный товар"
-        if barcode in products['Barcode'].values:
+        # Защита от пустой базы
+        if not products.empty and barcode in products['Barcode'].values:
             name = products[products['Barcode'] == barcode]['Name'].iloc[0]
         
         st.markdown(f"**Товар:** {name}")
         st.markdown(f"**Штрих-код:** {barcode}")
         
-        expiration = st.text_input("Срок годности (формат: ДД.ММ.ГГ, например 15.12.26)", "")
+        expiration = st.text_input("Срок годности (ДД.ММ.ГГ)", placeholder="15.12.26")
         
-        if st.button("Добавить в работу", type="primary"):
-            if expiration.strip() == "":
+        if st.button("✅ Добавить в работу", type="primary"):
+            if not expiration:
                 st.error("Укажи срок годности!")
             else:
-                # Добавляем в InWork
-                new_row = pd.DataFrame({
-                    'Barcode': [barcode],
-                    'Name': [name],
-                    'Expiration': [expiration]
-                })
+                # Добавляем / обновляем
+                new_row = pd.DataFrame({'Barcode': [barcode], 'Name': [name], 'Expiration': [expiration]})
+                current = get_inwork()
                 
-                current_inwork = get_inwork()
-                # Проверяем, нет ли уже такого товара
-                if barcode in current_inwork['Barcode'].values:
-                    st.warning("Этот товар уже в работе. Обновляем срок.")
-                    current_inwork.loc[current_inwork['Barcode'] == barcode, 'Expiration'] = expiration
-                    update_inwork(current_inwork)
+                if barcode in current['Barcode'].values:
+                    current.loc[current['Barcode'] == barcode, 'Expiration'] = expiration
+                    update_inwork(current)
                 else:
-                    updated_inwork = pd.concat([current_inwork, new_row], ignore_index=True)
-                    update_inwork(updated_inwork)
+                    update_inwork(pd.concat([current, new_row], ignore_index=True))
                 
-                # Обновляем статус в Products (если есть)
-                if barcode in products['Barcode'].values:
-                    products.loc[products['Barcode'] == barcode, 'Status'] = 1
-                    update_products(products)
-                
-                st.success("Товар успешно поставлен в работу!")
-                st.balloons()  # маленький приятный эффект :)
-# Остальные табы (Поставить в работу, Приемка, Управление, Настройки) — аналогично предыдущей версии, но с st.secrets
-# Если нужно — я добавлю их в следующий ответ, чтобы не перегружать этот. Пока развернём базовую версию.
-
-st.sidebar.info("Версия 1.0 — разработано с помощью Grok")
+                st.success("✅ Товар добавлен в работу!")
+                st.balloons()
