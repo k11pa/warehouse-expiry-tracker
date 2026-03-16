@@ -49,7 +49,7 @@ def get_color(exp_str, settings):
 
 # Интерфейс
 st.set_page_config(page_title="Отчёт по срокам в работе", layout="wide")
-st.title("Товары в работе — отчёт для руководства")
+st.title("Товары в работе")
 st.markdown("Обновляется автоматически. Выбери фильтр ниже.")
 
 # Фильтр по срочности
