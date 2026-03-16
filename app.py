@@ -85,66 +85,68 @@ with tab2:
     barcode = barcode_input.strip() if barcode_input else None
     
     if barcode:
-        barcode_clean = barcode
+    barcode_clean = barcode.strip()
+    
+    if not products.empty:
+        products['Barcode'] = products['Barcode'].astype(str).str.strip()
         
-        if not products.empty:
-            products['Barcode'] = products['Barcode'].astype(str).str.strip()
-            
-            # Поиск по полному коду или последним 6 цифрам
-            if len(barcode_clean) == 6:
-                matching = products[products['Barcode'].str.endswith(barcode_clean)]
-            else:
-                matching = products[products['Barcode'] == barcode_clean]
-            
-            if not matching.empty:
-                row = matching.iloc[0]
-                name = row['Name']
-                status = str(row.get('Status', '')).strip()
-                
-                if '2' in status:
-                    st.error(f"Товар **{name}** — нет в наличии (статус {status}).")
-                else:
-                    current_inwork = get_inwork()
-                    current_expiration = ""
-                    if not current_inwork.empty and 'Barcode' in current_inwork.columns:
-                        current_inwork['Barcode'] = current_inwork['Barcode'].astype(str).str.strip()
-                        if barcode_clean in current_inwork['Barcode'].values:
-                            current_expiration = current_inwork[current_inwork['Barcode'] == barcode_clean]['Expiration'].iloc[0]
-                            st.info(f"Уже в работе. Текущий срок: **{current_expiration}**")
-                    
-                    st.markdown(f"**Товар:** {name}")
-                    st.markdown(f"**Штрих-код:** {row['Barcode']}")
-                    
-                    expiration = st.text_input("Срок годности (ДД.ММ.ГГ)", value=current_expiration, placeholder="15.12.26")
-                    
-                    if st.button("✅ Добавить / Обновить", type="primary", use_container_width=True):
-                        if not expiration.strip():
-                            st.error("Укажи срок годности!")
-                        else:
-                            new_row = pd.DataFrame({
-                                'Barcode': [row['Barcode']],
-                                'Name': [name],
-                                'Expiration': [expiration]
-                            })
-                            
-                            if not current_inwork.empty and barcode_clean in current_inwork['Barcode'].values:
-                                current_inwork.loc[current_inwork['Barcode'] == barcode_clean, 'Expiration'] = expiration
-                                update_inwork(current_inwork)
-                                st.success("Срок обновлён!")
-                            else:
-                                update_inwork(pd.concat([current_inwork, new_row], ignore_index=True))
-                                st.success("Товар добавлен в работу!")
-                            
-                            st.balloons()
-                            # Очищаем поле ввода для следующего паллета
-                            st.session_state.barcode_input = ""
-                            st.rerun()
-            else:
-                st.error(f"Штрих-код **{barcode_clean}** не найден в базе.")
-                st.markdown("Обнови базу через Excel от офиса.")
+        # Поиск по полному коду или последним 6 цифрам
+        if len(barcode_clean) == 6:
+            # Ищем, где штрих-код заканчивается на эти 6 цифр (игнорируя длину)
+            matching = products[products['Barcode'].str[-6:] == barcode_clean]
         else:
-            st.error("База товаров пуста. Загрузи Excel.")
-
+            matching = products[products['Barcode'] == barcode_clean]
+        
+        if not matching.empty:
+            # Берём первый совпадающий (по твоим словам дубликатов нет)
+            row = matching.iloc[0]
+            name = row['Name']
+            status = str(row.get('Status', '')).strip()
+            
+            if '2' in status:
+                st.error(f"Товар **{name}** — нет в наличии (статус {status}).")
+            else:
+                current_inwork = get_inwork()
+                current_expiration = ""
+                if not current_inwork.empty and 'Barcode' in current_inwork.columns:
+                    current_inwork['Barcode'] = current_inwork['Barcode'].astype(str).str.strip()
+                    if row['Barcode'] in current_inwork['Barcode'].values:
+                        current_expiration = current_inwork[current_inwork['Barcode'] == row['Barcode']]['Expiration'].iloc[0]
+                        st.info(f"Уже в работе. Текущий срок: **{current_expiration}**")
+                
+                st.markdown(f"**Товар:** {name}")
+                st.markdown(f"**Штрих-код:** {row['Barcode']}")
+                
+                expiration = st.text_input("Срок годности (ДД.ММ.ГГ)", value=current_expiration, placeholder="15.12.26")
+                
+                if st.button("✅ Добавить / Обновить", type="primary", use_container_width=True):
+                    if not expiration.strip():
+                        st.error("Укажи срок годности!")
+                    else:
+                        new_row = pd.DataFrame({
+                            'Barcode': [row['Barcode']],
+                            'Name': [name],
+                            'Expiration': [expiration]
+                        })
+                        
+                        if row['Barcode'] in current_inwork['Barcode'].values:
+                            current_inwork.loc[current_inwork['Barcode'] == row['Barcode'], 'Expiration'] = expiration
+                            update_inwork(current_inwork)
+                            st.success("Срок обновлён!")
+                        else:
+                            update_inwork(pd.concat([current_inwork, new_row], ignore_index=True))
+                            st.success("Товар добавлен в работу!")
+                        
+                        st.balloons()
+                        # Очищаем поле ввода
+                        st.session_state.barcode_input = ""
+                        st.rerun()
+        else:
+            st.error(f"Штрих-код **{barcode_clean}** (или последние 6 цифр) не найден в базе.")
+            st.markdown("Обнови базу через Excel от офиса.")
+    else:
+        st.error("База товаров пуста. Загрузи Excel.")
+        
 # Вкладка "В работе"
 with tab1:
     st.header("Товары в работе")
