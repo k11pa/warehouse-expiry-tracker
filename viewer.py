@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-# Подключение — имя секции совпадает с твоим основным приложением
+# Подключение — имя секции взято из твоего основного app.py
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_info = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
@@ -87,7 +87,7 @@ if not inwork.empty:
     elif filter_option == "Только зелёные (нормальные сроки)":
         filtered = filtered[filtered['Color'] == "#ffffff"]
 
-    # Сортировка: от меньшей даты к большей (ближайшие сверху)
+    # Сортировка: от ближайшего срока к дальнему
     filtered = filtered.sort_values(by='ExpDate')
 
     st.markdown(f"**Найдено товаров: {len(filtered)}** (от ближайших сроков к дальним)")
