@@ -136,13 +136,10 @@ with tab2:
         barcode = st.text_input("Введи штрих-код паллета")
     
     if barcode:
-        if not products.empty:
-    products['Barcode'] = products['Barcode'].astype(str).str.strip()
-    if barcode.strip() in products['Barcode'].values:
-        row = products[products['Barcode'] == barcode.strip()].iloc[0]
+    if not products.empty and barcode in products['Barcode'].values:
+        row = products[products['Barcode'] == barcode].iloc[0]
         name = row['Name']
         status = row.get('Status', '')
-        # ... остальной код
             
             if '2' in status:  # Если ^^^^^^^^^2 или просто 2
                 st.error(f"Товар **{name}** — нет в наличии (статус {status}).")
