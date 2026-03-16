@@ -113,49 +113,27 @@ with tab2:
     products = get_products()
     
     input_method = st.radio("Как найти товар?", 
-                            ["Live-сканирование камерой", "Поиск по имени", "Ввести штрих-код вручную"])
+                            ["Сфоткать штрих-код (быстро)", "Поиск по имени", "Ввести штрих-код вручную"])
     
     barcode = None
     name = "Неизвестный товар"
     
-    if input_method == "Live-сканирование камерой":
-        st.info("Наведи камеру на штрих-код — распознавание происходит автоматически")
+    if input_method == "Сфоткать штрих-код (быстро)":
+        st.info("Наведи камеру на штрих-код и нажми кнопку ниже для распознавания")
         
-        # HTML + JS для live-сканирования с html5-qrcode
-        html_code = """
-        <div id="reader" style="width:100%; height:400px;"></div>
-        <p id="result"></p>
+        camera_image = st.camera_input("Сделать фото штрих-кода", key="camera_scanner")
         
-        <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-        <script>
-        const html5QrCode = new Html5Qrcode("reader");
-        const config = { fps: 10, qrbox: {width: 250, height: 250} };
-        
-        html5QrCode.start(
-            { facingMode: "environment" },
-            config,
-            (decodedText, decodedResult) => {
-                document.getElementById("result").innerText = "Распознано: " + decodedText;
-                // Отправляем результат в Streamlit (через query-параметр или session_state, но проще через кнопку ниже)
-                window.parent.postMessage({type: "streamlit:barcode", value: decodedText}, "*");
-            },
-            (errorMessage) => {
-                // console.log(errorMessage);
-            }
-        ).catch((err) => {
-            document.getElementById("result").innerText = "Ошибка запуска камеры: " + err;
-        });
-        </script>
-        """
-        
-        st.components.v1.html(html_code, height=450)
-        
-        # Пока JS не может напрямую менять session_state, просим пользователя подтвердить
-        detected_barcode = st.text_input("Если код распознан выше — вставь его сюда или нажми кнопку ниже", "")
-        if st.button("Использовать распознанный код"):
-            barcode = detected_barcode.strip()
-            if barcode:
-                st.success(f"Используем: {barcode}")
+        if camera_image:
+            img = Image.open(camera_image)
+            decoded = decode(img)
+            if decoded:
+                barcode = decoded[0].data.decode('utf-8')
+                st.success(f"✅ Распознано автоматически: **{barcode}**")
+            else:
+                st.warning("Не видно штрих-кода. Попробуй:")
+                st.markdown("- Другой угол или расстояние")
+                st.markdown("- Лучшее освещение")
+                st.markdown("- Чётче сфокусировать")
     
     elif input_method == "Поиск по имени":
         if not products.empty:
@@ -164,15 +142,16 @@ with tab2:
                 row = products[products['Name'] == selected].iloc[0]
                 barcode = row['Barcode']
                 name = row['Name']
+                st.info(f"Выбран: **{name}** (штрих-код {barcode})")
         else:
-            st.warning("База товаров пуста. Добавь товары во вкладке «Товары».")
+            st.warning("База товаров пуста. Добавь во вкладке «Товары».")
     
     elif input_method == "Ввести штрих-код вручную":
-        barcode = st.text_input("Введи штрих-код")
+        barcode = st.text_input("Введи штрих-код полностью")
     
-    # Общая логика добавления (если barcode получен любым способом)
+    # Общая часть — если barcode найден любым способом
     if barcode:
-        # Защита от пустой базы
+        # Ищем имя, если есть в базе
         if not products.empty and barcode in products['Barcode'].values:
             name = products[products['Barcode'] == barcode]['Name'].iloc[0]
         
@@ -183,7 +162,7 @@ with tab2:
         
         if st.button("✅ Добавить в работу", type="primary"):
             if not expiration.strip():
-                st.error("Укажи срок годности!")
+                st.error("Обязательно укажи срок!")
             else:
                 new_row = pd.DataFrame({'Barcode': [barcode], 'Name': [name], 'Expiration': [expiration]})
                 current = get_inwork()
@@ -191,8 +170,9 @@ with tab2:
                 if barcode in current['Barcode'].values:
                     current.loc[current['Barcode'] == barcode, 'Expiration'] = expiration
                     update_inwork(current)
+                    st.info("Срок обновлён для существующего товара")
                 else:
                     update_inwork(pd.concat([current, new_row], ignore_index=True))
+                    st.success("Новый товар добавлен в работу!")
                 
-                st.success("Товар добавлен в работу!")
                 st.balloons()
