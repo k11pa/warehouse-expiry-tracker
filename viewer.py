@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-# Подключение к тому же Google Sheet
+# Подключение к базе (точно такое же, как в основном приложении)
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_info = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
@@ -13,7 +13,6 @@ CLIENT = gspread.authorize(creds)
 SHEET_ID = "1q8RdFS_XBl0N7QhdBITQzCQXCLGEo2kkLEpDc3Jn5BM"
 sheet = CLIENT.open_by_key(SHEET_ID)
 
-# Функции
 def get_inwork():
     ws = sheet.worksheet("InWork")
     df = pd.DataFrame(ws.get_all_records())
@@ -41,52 +40,76 @@ def get_color(exp_str, settings):
     red = int(settings.get('RedMonths', 2))
     yellow = int(settings.get('YellowMonths', 3))
     if months_left <= 0:
-        return "#ffcccc"  # просрочен
+        return "#ffcccc"   # просрочен
     if months_left < red:
-        return "#ff9999"  # красный
+        return "#ff9999"   # красный
     if months_left < yellow:
-        return "#ffff99"  # жёлтый
-    return "#ffffff"  # белый
+        return "#ffff99"   # жёлтый
+    return "#ffffff"       # белый
 
-# Интерфейс
-st.set_page_config(page_title="Товары в работе — Отчёт", layout="wide")
-st.title("Товары в работе")
-st.markdown("Только актуальные товары на 0-м этаже. Цвета показывают срочность срока годности.")
+# ──────────────────────────────────────────────
+# Интерфейс для начальства
+# ──────────────────────────────────────────────
+
+st.set_page_config(page_title="Отчёт по срокам в работе", layout="wide")
+st.title("Товары в работе — отчёт для руководства")
+st.markdown("Обновляется автоматически. Сортировка по умолчанию: ближайшие сроки сверху.")
+
+# Фильтр по цвету/срочности
+filter_option = st.selectbox(
+    "Показать:",
+    ["Всё сразу", "Только красные (критические)", "Только жёлтые", "Только зелёные (нормальные сроки)"],
+    index=0
+)
 
 inwork = get_inwork()
 
 if not inwork.empty:
+    # Поиск
     search = st.text_input("Поиск по имени или штрих-коду", "")
-    filtered = inwork
+
+    # Фильтрация по цвету
+    settings = get_settings()
+    inwork['ExpDate'] = inwork['Expiration'].apply(parse_date)
+    inwork['Color'] = inwork['Expiration'].apply(lambda x: get_color(x, settings))
+
+    filtered = inwork.copy()
+
     if search:
         search = search.strip()
-        filtered = inwork[
-            inwork['Name'].astype(str).str.contains(search, case=False, na=False) |
-            inwork['Barcode'].astype(str).str.contains(search, na=False)
+        filtered = filtered[
+            filtered['Name'].astype(str).str.contains(search, case=False, na=False) |
+            filtered['Barcode'].astype(str).str.contains(search, na=False)
         ]
-    
-    # Сортировка по сроку
-    filtered['ExpDate'] = filtered['Expiration'].apply(parse_date)
+
+    # Применяем фильтр по цвету
+    if filter_option == "Только красные (критические)":
+        filtered = filtered[filtered['Color'].isin(["#ff9999", "#ffcccc"])]
+    elif filter_option == "Только жёлтые":
+        filtered = filtered[filtered['Color'] == "#ffff99"]
+    elif filter_option == "Только зелёные (нормальные сроки)":
+        filtered = filtered[filtered['Color'] == "#ffffff"]
+
+    # Сортировка по сроку (от меньшего к большему)
     filtered = filtered.sort_values(by='ExpDate')
-    filtered = filtered.drop(columns=['ExpDate'], errors='ignore')
+
+    # Красивый вывод
+    st.markdown(f"**Найдено товаров: {len(filtered)}**")
     
-    settings = get_settings()
-    
-    st.markdown("### Список товаров (ближайшие сроки сверху)")
     for _, row in filtered.iterrows():
-        bg = get_color(row['Expiration'], settings)
+        bg = row['Color']
         st.markdown(
             f"<div style='background-color:{bg}; padding:12px; margin:8px; border-radius:8px; border:1px solid #ccc; font-size:16px;'>"
             f"<strong>{row['Barcode']}</strong> — {row['Name']} — <strong>{row['Expiration']}</strong>"
             f"</div>",
             unsafe_allow_html=True
         )
-    
-    # Экспорт для начальства
-    csv = filtered.to_csv(index=False).encode('utf-8')
-    st.download_button("Скачать отчёт в CSV", csv, "в_работе_отчет.csv", "text/csv")
-    
+
+    # Экспорт
+    csv = filtered.drop(columns=['ExpDate', 'Color'], errors='ignore').to_csv(index=False).encode('utf-8')
+    st.download_button("Скачать отчёт в CSV", csv, "отчет_в_работе.csv", "text/csv")
+
 else:
     st.info("Пока нет товаров в работе.")
 
-st.sidebar.info("Отчёт только для просмотра · Обновляется в реальном времени")
+st.sidebar.info("Отчёт только для просмотра · Данные из InWork · Обновляется в реальном времени")
