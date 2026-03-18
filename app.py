@@ -6,7 +6,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import time
 
-# Подключение к Google Sheets
+# Подключение
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_info = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
@@ -31,26 +31,19 @@ def get_inwork():
 
 def update_or_add_inwork(barcode, name, expiration):
     ws = sheet.worksheet("InWork")
-    df = get_inwork()
+    df = get_inwork()  # читаем один раз
     
     barcode_clean = str(barcode).strip()
     
     if barcode_clean in df['Barcode'].values:
+        # Обновляем только ячейку с датой (столбец C = 3)
         row_index = df[df['Barcode'] == barcode_clean].index[0] + 2  # +2 для заголовка
-        ws.update_cell(row_index, 3, expiration)  # столбец C = Expiration
+        ws.update_cell(row_index, 3, expiration)
     else:
+        # Добавляем новую строку
         ws.append_row([barcode_clean, name, expiration])
-
-def get_settings():
-    ws = sheet.worksheet("Settings")
-    data = ws.get_all_records()
-    return {row.get('Key', ''): row.get('Value', '') for row in data} or {'YellowMonths': '3', 'RedMonths': '2'}
-
-def update_settings(settings):
-    ws = sheet.worksheet("Settings")
-    ws.clear()
-    data = [['Key', 'Value']] + [[k, v] for k, v in settings.items()]
-    ws.update(data)
+    
+    time.sleep(2)  # обязательная задержка, чтобы Google не блокировал
 
 def parse_date(date_str):
     try:
@@ -74,6 +67,11 @@ def get_color(exp_str, settings):
         return "#ffff99"
     return "#ffffff"
 
+def get_settings():
+    ws = sheet.worksheet("Settings")
+    data = ws.get_all_records()
+    return {row.get('Key', ''): row.get('Value', '') for row in data} or {'YellowMonths': '3', 'RedMonths': '2'}
+
 # Интерфейс
 st.set_page_config(page_title="Склад — Сроки годности", layout="wide")
 
@@ -81,11 +79,11 @@ tab2, tab1, tab3, tab4, tab5 = st.tabs(["Поставить в работу", "�
 
 with tab2:
     st.title("Обход склада — поставить/обновить сроки")
-    st.markdown("Вводи последние 6 цифр или полный штрих-код паллета. После добавления поля очистятся автоматически.")
+    st.markdown("Вводи последние 6 цифр или полный штрих-код паллета. Поле очистится автоматически после добавления.")
 
     products = get_products()
     
-    # Поля ввода в session_state
+    # Поля в session_state
     if 'barcode_input' not in st.session_state:
         st.session_state.barcode_input = ""
     if 'expiration_input' not in st.session_state:
@@ -120,6 +118,7 @@ with tab2:
                 else:
                     current_inwork = get_inwork()
                     current_expiration = st.session_state.expiration_input
+                    
                     if not current_inwork.empty and 'Barcode' in current_inwork.columns:
                         current_inwork['Barcode'] = current_inwork['Barcode'].astype(str).str.strip()
                         if row['Barcode'] in current_inwork['Barcode'].values:
@@ -136,16 +135,20 @@ with tab2:
                         if not expiration.strip():
                             st.error("Укажи срок годности!")
                         else:
-                            update_or_add_inwork(row['Barcode'], name, expiration)
-                            st.success("Готово! Срок обновлён или товар добавлен.")
-                            st.balloons()
-                            time.sleep(0.5)  # небольшая задержка для API
-                            # Очищаем оба поля
-                            st.session_state.barcode_input = ""
-                            st.session_state.expiration_input = ""
-                            st.rerun()
+                            try:
+                                update_or_add_inwork(row['Barcode'], name, expiration)
+                                st.success("Готово! Срок обновлён или товар добавлен.")
+                                time.sleep(2)  # задержка для API
+                                # Очищаем оба поля
+                                st.session_state.barcode_input = ""
+                                st.session_state.expiration_input = ""
+                                st.rerun()
+                            except gspread.exceptions.APIError as e:
+                                st.error("Временная ошибка Google Sheets. Подожди 30–60 секунд и попробуй снова.")
+                                if st.button("Повторить попытку"):
+                                    st.rerun()
             else:
-                st.error(f"Штрих-код **{barcode_clean}** (или последние 6 цифр) не найден в базе.")
+                st.error(f"Штрих-код **{barcode_clean}** не найден в базе.")
                 st.markdown("Обнови базу через Excel от офиса.")
         else:
             st.error("База товаров пуста. Загрузи Excel.")
@@ -196,4 +199,4 @@ with tab5:
     st.header("Настройки")
     st.info("Функционал в разработке")
 
-st.sidebar.info("v1.5")
+st.sidebar.info("Версия 1.6 — разработано с помощью Grok")
