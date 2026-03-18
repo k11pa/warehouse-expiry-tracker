@@ -94,6 +94,7 @@ with tab2:
     
     barcode = barcode_input.strip() if barcode_input else None
     
+    # Показываем результат ТОЛЬКО если поле ввода НЕ пустое
     if barcode:
         barcode_clean = barcode
         
@@ -134,18 +135,17 @@ with tab2:
                         else:
                             update_or_add_inwork(row['Barcode'], name, expiration)
                             st.success("Готово!")
-                            time.sleep(1)  # задержка уменьшена до 1 секунды
+                            time.sleep(1)  # задержка для API
                             # Очищаем оба поля
                             st.session_state.barcode_input = ""
                             st.session_state.expiration_input = ""
-                            # НЕ rerun — чтобы не искать заново по пустому полю
+                            # НЕ rerun — чтобы не искать заново
             else:
                 st.error(f"Штрих-код **{barcode_clean}** не найден.")
                 st.markdown("Обнови базу через Excel.")
         else:
             st.error("База пуста. Загрузи Excel.")
     else:
-        # Если поле пустое — просто подсказка
         st.info("Введи код паллета для поиска.")
 with tab1:
     st.header("Товары в работе")
