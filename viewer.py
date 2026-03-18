@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-# Подключение — имя секции взято из твоего основного app.py
+# Подключение
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_info = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
@@ -49,7 +49,8 @@ def get_color(exp_str, settings):
 
 # Интерфейс
 st.set_page_config(page_title="Отчёт по срокам в работе", layout="wide")
-st.title("Товары в работе")
+
+st.title("Товары в работе — отчёт для руководства")
 st.markdown("Обновляется автоматически. Выбери фильтр ниже.")
 
 # Фильтр по срочности
@@ -62,7 +63,6 @@ filter_option = st.selectbox(
 inwork = get_inwork()
 
 if not inwork.empty:
-    # Поиск
     search = st.text_input("Поиск по имени или штрих-коду", "")
 
     # Подготовка данных
@@ -74,10 +74,13 @@ if not inwork.empty:
 
     if search:
         search = search.strip()
-        filtered = filtered[
-            filtered['Name'].astype(str).str.contains(search, case=False, na=False) |
-            filtered['Barcode'].astype(str).str.contains(search, na=False)
-        ]
+        if len(search) == 6:
+            filtered = filtered[filtered['Barcode'].str.endswith(search)]
+        else:
+            filtered = filtered[
+                filtered['Name'].astype(str).str.contains(search, case=False, na=False) |
+                filtered['Barcode'].astype(str).str.contains(search, na=False)
+            ]
 
     # Фильтр по цвету
     if filter_option == "Только красные (критические)":
@@ -92,12 +95,27 @@ if not inwork.empty:
 
     st.markdown(f"**Найдено товаров: {len(filtered)}** (от ближайших сроков к дальним)")
 
+    # Улучшенный вывод для тёмной темы — белый текст + контрастная рамка
     for _, row in filtered.iterrows():
         bg = row['Color']
+        text_color = "#000000" if bg in ["#ffff99", "#ffffff"] else "#ffffff"  # чёрный текст на светлом фоне, белый на тёмном
+        border_color = "#444444" if bg == "#ffffff" else "#888888"  # контрастная рамка в тёмной теме
+        
         st.markdown(
-            f"<div style='background-color:{bg}; padding:12px; margin:8px; border-radius:8px; border:1px solid #ccc; font-size:16px;'>"
-            f"<strong>{row['Barcode']}</strong> — {row['Name']} — <strong>{row['Expiration']}</strong>"
-            f"</div>",
+            f"""
+            <div style="
+                background-color: {bg};
+                color: {text_color};
+                padding: 14px;
+                margin: 10px 0;
+                border-radius: 10px;
+                border: 1px solid {border_color};
+                font-size: 17px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            ">
+                <strong>{row['Barcode']}</strong> — {row['Name']} — <strong>{row['Expiration']}</strong>
+            </div>
+            """,
             unsafe_allow_html=True
         )
 
