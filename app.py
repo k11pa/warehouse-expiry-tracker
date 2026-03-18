@@ -143,7 +143,7 @@ with tab2:
 
 with tab1:
     st.header("Товары в работе")
-    inwork = get_inwork()
+    inwork = load_inwork()
     if not inwork.empty:
         search = st.text_input("Поиск по имени / штрих-коду")
         filtered = inwork
