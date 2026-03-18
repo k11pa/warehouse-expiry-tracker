@@ -6,7 +6,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import time
 
-# Подключение к Google Sheets
+# Подключение
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_info = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
@@ -14,46 +14,27 @@ CLIENT = gspread.authorize(creds)
 SHEET_ID = "1q8RdFS_XBl0N7QhdBITQzCQXCLGEo2kkLEpDc3Jn5BM"
 sheet = CLIENT.open_by_key(SHEET_ID)
 
-# Функции
-def get_products():
+# Кэшируем таблицы в session_state, чтобы не читать каждый раз
+@st.cache_data(ttl=30)  # кэш на 30 секунд
+def load_inwork():
+    ws = sheet.worksheet("InWork")
+    df = pd.DataFrame(ws.get_all_records())
+    if not df.empty and 'Barcode' in df.columns:
+        df['Barcode'] = df['Barcode'].astype(str).str.strip()
+    return df
+
+@st.cache_data(ttl=60)  # кэш на 60 секунд для продуктов
+def load_products():
     ws = sheet.worksheet("Products")
     df = pd.DataFrame(ws.get_all_records())
     if not df.empty and 'Barcode' in df.columns:
         df['Barcode'] = df['Barcode'].astype(str).str.strip()
     return df
 
-def get_inwork():
-    ws = sheet.worksheet("InWork")
-    df = pd.DataFrame(ws.get_all_records())
-    if not df.empty and 'Barcode' in df.columns:
-        df['Barcode'] = df['Barcode'].astype(str).str.strip()
-    return df
-
-def update_or_add_inwork(barcode, name, expiration):
-    ws = sheet.worksheet("InWork")
-    df = get_inwork()
-    
-    barcode_clean = str(barcode).strip()
-    
-    if barcode_clean in df['Barcode'].values:
-        # Обновляем существующую строку
-        row_index = df[df['Barcode'] == barcode_clean].index[0] + 2  # +2 потому что индекс с 0, а строки с 1 + заголовок
-        ws.update_cell(row_index, 3, expiration)  # столбец C = Expiration
-    else:
-        # Добавляем новую строку
-        new_row = [barcode_clean, name, expiration]
-        ws.append_row(new_row)
-
 def get_settings():
     ws = sheet.worksheet("Settings")
     data = ws.get_all_records()
     return {row.get('Key', ''): row.get('Value', '') for row in data} or {'YellowMonths': '3', 'RedMonths': '2'}
-
-def update_settings(settings):
-    ws = sheet.worksheet("Settings")
-    ws.clear()
-    data = [['Key', 'Value']] + [[k, v] for k, v in settings.items()]
-    ws.update(data)
 
 def parse_date(date_str):
     try:
@@ -80,16 +61,14 @@ def get_color(exp_str, settings):
 # Интерфейс
 st.set_page_config(page_title="Склад — Сроки годности", layout="wide")
 
-# Вкладки — "Поставить в работу" первая
 tab2, tab1, tab3, tab4, tab5 = st.tabs(["Поставить в работу", "В работе", "Приемка + Печать", "Товары", "Настройки"])
 
 with tab2:
     st.title("Обход склада — поставить/обновить сроки")
     st.markdown("Вводи последние 6 цифр или полный штрих-код паллета. После добавления поле очистится автоматически.")
 
-    products = get_products()
+    products = load_products()
     
-    # Поле ввода
     if 'barcode_input' not in st.session_state:
         st.session_state.barcode_input = ""
     
@@ -107,7 +86,6 @@ with tab2:
         if not products.empty:
             products['Barcode'] = products['Barcode'].astype(str).str.strip()
             
-            # Поиск по полному коду или последним 6 цифрам
             if len(barcode_clean) == 6:
                 matching = products[products['Barcode'].str[-6:] == barcode_clean]
             else:
@@ -121,38 +99,48 @@ with tab2:
                 if '2' in status:
                     st.error(f"Товар **{name}** — нет в наличии (статус {status}).")
                 else:
-                    current_inwork = get_inwork()
-                    current_expiration = ""
-                    if not current_inwork.empty and 'Barcode' in current_inwork.columns:
-                        current_inwork['Barcode'] = current_inwork['Barcode'].astype(str).str.strip()
-                        if row['Barcode'] in current_inwork['Barcode'].values:
-                            current_expiration = current_inwork[current_inwork['Barcode'] == row['Barcode']]['Expiration'].iloc[0]
-                            st.info(f"Уже в работе. Текущий срок: **{current_expiration}**")
-                    
-                    st.markdown(f"**Товар:** {name}")
-                    st.markdown(f"**Штрих-код:** {row['Barcode']}")
-                    
-                    expiration = st.text_input("Срок годности (ДД.ММ.ГГ)", value=current_expiration, placeholder="15.12.26")
-                    
-                    if st.button("✅ Добавить / Обновить", type="primary", use_container_width=True):
-                        if not expiration.strip():
-                            st.error("Укажи срок годности!")
-                        else:
-                            # Обновляем или добавляем без очистки всей таблицы
-                            update_or_add_inwork(row['Barcode'], name, expiration)
-                            st.success("Готово! Срок обновлён или товар добавлен.")
-                            st.balloons()
-                            # Очищаем поле ввода
-                            st.session_state.barcode_input = ""
-                            time.sleep(0.5)  # небольшая задержка для стабильности API
-                            st.rerun()
+                    try:
+                        current_inwork = load_inwork()
+                        current_expiration = ""
+                        if not current_inwork.empty and 'Barcode' in current_inwork.columns:
+                            current_inwork['Barcode'] = current_inwork['Barcode'].astype(str).str.strip()
+                            if row['Barcode'] in current_inwork['Barcode'].values:
+                                current_expiration = current_inwork[current_inwork['Barcode'] == row['Barcode']]['Expiration'].iloc[0]
+                                st.info(f"Уже в работе. Текущий срок: **{current_expiration}**")
+                        
+                        st.markdown(f"**Товар:** {name}")
+                        st.markdown(f"**Штрих-код:** {row['Barcode']}")
+                        
+                        expiration = st.text_input("Срок годности (ДД.ММ.ГГ)", value=current_expiration, placeholder="15.12.26")
+                        
+                        if st.button("✅ Добавить / Обновить", type="primary", use_container_width=True):
+                            if not expiration.strip():
+                                st.error("Укажи срок годности!")
+                            else:
+                                ws = sheet.worksheet("InWork")
+                                if row['Barcode'] in current_inwork['Barcode'].values:
+                                    # Обновляем существующую строку
+                                    row_index = current_inwork[current_inwork['Barcode'] == row['Barcode']].index[0] + 2  # +2 для заголовка
+                                    ws.update_cell(row_index, 3, expiration)  # столбец C = Expiration
+                                    st.success("Срок обновлён!")
+                                else:
+                                    # Добавляем новую строку
+                                    ws.append_row([row['Barcode'], name, expiration])
+                                    st.success("Товар добавлен в работу!")
+                                
+                                st.balloons()
+                                time.sleep(1)  # задержка для API
+                                st.session_state.barcode_input = ""
+                                st.rerun()
+                    except gspread.exceptions.APIError as e:
+                        st.error("Временная ошибка Google Sheets. Подожди 30–60 секунд и попробуй снова.")
+                        st.button("Повторить попытку", on_click=st.rerun)
             else:
-                st.error(f"Штрих-код **{barcode_clean}** (или последние 6 цифр) не найден в базе.")
+                st.error(f"Штрих-код **{barcode_clean}** не найден в базе.")
                 st.markdown("Обнови базу через Excel от офиса.")
         else:
             st.error("База товаров пуста. Загрузи Excel.")
 
-# Вкладка "В работе"
 with tab1:
     st.header("Товары в работе")
     inwork = get_inwork()
@@ -185,7 +173,7 @@ with tab1:
     else:
         st.info("Пока нет товаров в работе.")
 
-# Остальные вкладки (заглушки)
+# Заглушки для остальных вкладок
 with tab3:
     st.header("Приемка + Печать")
     st.info("Функционал в разработке")
@@ -198,4 +186,4 @@ with tab5:
     st.header("Настройки")
     st.info("Функционал в разработке")
 
-st.sidebar.info("Версия 1.3 — разработано с помощью Grok")
+st.sidebar.info("Версия 1.4 — разработано с помощью Grok")
