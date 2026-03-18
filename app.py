@@ -4,6 +4,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import time
 
 # Подключение к Google Sheets
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -28,10 +29,20 @@ def get_inwork():
         df['Barcode'] = df['Barcode'].astype(str).str.strip()
     return df
 
-def update_inwork(df):
+def update_or_add_inwork(barcode, name, expiration):
     ws = sheet.worksheet("InWork")
-    ws.clear()
-    ws.update([df.columns.values.tolist()] + df.values.tolist())
+    df = get_inwork()
+    
+    barcode_clean = str(barcode).strip()
+    
+    if barcode_clean in df['Barcode'].values:
+        # Обновляем существующую строку
+        row_index = df[df['Barcode'] == barcode_clean].index[0] + 2  # +2 потому что индекс с 0, а строки с 1 + заголовок
+        ws.update_cell(row_index, 3, expiration)  # столбец C = Expiration
+    else:
+        # Добавляем новую строку
+        new_row = [barcode_clean, name, expiration]
+        ws.append_row(new_row)
 
 def get_settings():
     ws = sheet.worksheet("Settings")
@@ -59,12 +70,12 @@ def get_color(exp_str, settings):
     red = int(settings.get('RedMonths', 2))
     yellow = int(settings.get('YellowMonths', 3))
     if months_left <= 0:
-        return "#ffcccc"   # просрочен
+        return "#ffcccc"
     if months_left < red:
-        return "#ff9999"   # красный
+        return "#ff9999"
     if months_left < yellow:
-        return "#ffff99"   # жёлтый
-    return "#ffffff"       # белый
+        return "#ffff99"
+    return "#ffffff"
 
 # Интерфейс
 st.set_page_config(page_title="Склад — Сроки годности", layout="wide")
@@ -72,7 +83,6 @@ st.set_page_config(page_title="Склад — Сроки годности", layo
 # Вкладки — "Поставить в работу" первая
 tab2, tab1, tab3, tab4, tab5 = st.tabs(["Поставить в работу", "В работе", "Приемка + Печать", "Товары", "Настройки"])
 
-# Главная вкладка — сразу "Поставить в работу"
 with tab2:
     st.title("Обход склада — поставить/обновить сроки")
     st.markdown("Вводи последние 6 цифр или полный штрих-код паллета. После добавления поле очистится автоматически.")
@@ -128,23 +138,13 @@ with tab2:
                         if not expiration.strip():
                             st.error("Укажи срок годности!")
                         else:
-                            new_row = pd.DataFrame({
-                                'Barcode': [row['Barcode']],
-                                'Name': [name],
-                                'Expiration': [expiration]
-                            })
-                            
-                            if row['Barcode'] in current_inwork['Barcode'].values:
-                                current_inwork.loc[current_inwork['Barcode'] == row['Barcode'], 'Expiration'] = expiration
-                                update_inwork(current_inwork)
-                                st.success("Срок обновлён!")
-                            else:
-                                update_inwork(pd.concat([current_inwork, new_row], ignore_index=True))
-                                st.success("Товар добавлен в работу!")
-                            
+                            # Обновляем или добавляем без очистки всей таблицы
+                            update_or_add_inwork(row['Barcode'], name, expiration)
+                            st.success("Готово! Срок обновлён или товар добавлен.")
                             st.balloons()
                             # Очищаем поле ввода
                             st.session_state.barcode_input = ""
+                            time.sleep(0.5)  # небольшая задержка для стабильности API
                             st.rerun()
             else:
                 st.error(f"Штрих-код **{barcode_clean}** (или последние 6 цифр) не найден в базе.")
