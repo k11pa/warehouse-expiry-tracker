@@ -41,7 +41,7 @@ def update_or_add_inwork(barcode, name, expiration):
     else:
         ws.append_row([barcode_clean, name, expiration])
     
-    time.sleep(1)  # задержка для стабильности API
+    time.sleep(1)  # задержка для API
 
 def parse_date(date_str):
     try:
@@ -58,10 +58,10 @@ def get_color(exp_str, settings):
     red = float(settings.get('RedMonths', 2.0))
     yellow = float(settings.get('YellowMonths', 3.0))
     if months_left <= 0 or months_left < red:
-        return "#ff9999"  # красный
+        return "#ff9999"
     if months_left < yellow:
-        return "#ffff99"  # жёлтый
-    return "#ffffff"  # белый
+        return "#ffff99"
+    return "#ffffff"
 
 def get_settings():
     ws = sheet.worksheet("Settings")
@@ -80,12 +80,11 @@ st.set_page_config(page_title="Склад — Сроки годности", layo
 tab2, tab1, tab3, tab4, tab5 = st.tabs(["Поставить в работу", "В работе", "Приемка + Печать", "Товары", "Настройки"])
 
 with tab2:
-    st.title("Обход склада — поставить/обновить сроки")
-    st.markdown("Вводи последние 6 цифр или полный штрих-код паллета. Поля очистятся автоматически после добавления.")
+    st.title("Обход склада — обновить сроки при спуске паллета")
+    st.markdown("Вводи последние 6 цифр или полный штрих-код. После обновления поля очистятся автоматически.")
 
     products = get_products()
     
-    # Поля в session_state
     if 'barcode_input' not in st.session_state:
         st.session_state.barcode_input = ""
     if 'expiration_input' not in st.session_state:
@@ -164,7 +163,6 @@ with tab1:
                 inwork['Expiration'].astype(str).str.contains(search, na=False)
             ]
         
-        # Сортировка по сроку
         def sort_key(date_str):
             exp = parse_date(date_str)
             return exp if exp else datetime.max
@@ -173,7 +171,6 @@ with tab1:
         
         settings = get_settings()
         
-        # Окраска строк
         def highlight_row(row):
             exp = parse_date(row['Expiration'])
             if not exp:
@@ -256,4 +253,4 @@ with tab5:
         st.success(f"Сохранено! Красный < {new_red} мес, жёлтый < {new_yellow} мес")
         st.rerun()
 
-st.sidebar.info("Версия 1.7 — разработано с помощью Grok")
+st.sidebar.info("Версия 1.8 — разработано с помощью Grok")
