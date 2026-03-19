@@ -37,11 +37,11 @@ def update_or_add_inwork(barcode, name, expiration):
     
     if barcode_clean in df['Barcode'].values:
         row_index = df[df['Barcode'] == barcode_clean].index[0] + 2
-        ws.update_cell(row_index, 3, expiration)  # столбец C = Expiration
+        ws.update_cell(row_index, 3, expiration)
     else:
         ws.append_row([barcode_clean, name, expiration])
     
-    time.sleep(1)  # минимальная задержка для стабильности API
+    time.sleep(1)  # задержка для стабильности API
 
 def parse_date(date_str):
     try:
@@ -55,8 +55,8 @@ def get_color(exp_str, settings):
     if not exp:
         return "#ffffff"
     months_left = relativedelta(exp, datetime.now()).months + (relativedelta(exp, datetime.now()).years * 12)
-    red = float(settings.get('RedMonths', 2))
-    yellow = float(settings.get('YellowMonths', 3))
+    red = float(settings.get('RedMonths', 2.0))
+    yellow = float(settings.get('YellowMonths', 3.0))
     if months_left <= 0 or months_left < red:
         return "#ff9999"  # красный
     if months_left < yellow:
@@ -66,7 +66,7 @@ def get_color(exp_str, settings):
 def get_settings():
     ws = sheet.worksheet("Settings")
     data = ws.get_all_records()
-    return {row.get('Key', ''): row.get('Value', '') for row in data} or {'YellowMonths': '3', 'RedMonths': '2'}
+    return {row.get('Key', ''): row.get('Value', '') for row in data} or {'YellowMonths': '3.0', 'RedMonths': '2.0'}
 
 def update_settings(settings):
     ws = sheet.worksheet("Settings")
@@ -138,8 +138,7 @@ with tab2:
                         else:
                             update_or_add_inwork(row['Barcode'], name, expiration)
                             st.success("Готово!")
-                            time.sleep(1)  # задержка для API
-                            # Очищаем поля
+                            time.sleep(1)
                             st.session_state.barcode_input = ""
                             st.session_state.expiration_input = ""
             else:
@@ -165,7 +164,7 @@ with tab1:
                 inwork['Expiration'].astype(str).str.contains(search, na=False)
             ]
         
-        # Сортировка по сроку (ближайшие сверху)
+        # Сортировка по сроку
         def sort_key(date_str):
             exp = parse_date(date_str)
             return exp if exp else datetime.max
@@ -180,15 +179,14 @@ with tab1:
             if not exp:
                 return [''] * len(row)
             months_left = relativedelta(exp, datetime.now()).months + (relativedelta(exp, datetime.now()).years * 12)
-            if months_left <= 0 or months_left < int(settings.get('RedMonths', 2)):
-                return ['background-color: #ff9999'] * len(row)  # красный
-            if months_left < int(settings.get('YellowMonths', 3)):
-                return ['background-color: #ffff99'] * len(row)  # жёлтый
+            if months_left <= 0 or months_left < float(settings.get('RedMonths', 2.0)):
+                return ['background-color: #ff9999'] * len(row)
+            if months_left < float(settings.get('YellowMonths', 3.0)):
+                return ['background-color: #ffff99'] * len(row)
             return [''] * len(row)
         
         styled = filtered.style.apply(highlight_row, axis=1)
         
-        st.markdown("### Список товаров (сортировка по клику на заголовок)")
         st.dataframe(
             styled,
             use_container_width=True,
@@ -199,7 +197,6 @@ with tab1:
             }
         )
         
-        # Экспорт
         csv_all = filtered.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button("Скачать весь список (CSV)", csv_all, "в_работе.csv", "text/csv")
         
@@ -221,48 +218,34 @@ with tab4:
 
 with tab5:
     st.header("Настройки цветов сроков годности")
-    st.markdown("Настраивай пороги отдельно, но жёлтый всегда будет не меньше красного. Сохрани — изменения применятся сразу во всём приложении и в отчёте.")
+    st.markdown("Настраивай пороги отдельно, но жёлтый всегда ≥ красный. Сохрани — изменения применятся сразу.")
 
     settings = get_settings()
     
-    # Текущие значения
     red_months = float(settings.get('RedMonths', 2.0))
     yellow_months = float(settings.get('YellowMonths', 3.0))
-    
-    # Гарантируем, что жёлтый ≥ красный
-    if yellow_months < red_months:
-        yellow_months = red_months
     
     col1, col2 = st.columns(2)
     
     with col1:
         new_red = st.slider(
-            "Красный цвет: выделять, если осталось меньше (месяцев)",
+            "Красный: меньше (месяцев)",
             min_value=0.5,
             max_value=12.0,
             value=red_months,
             step=0.5,
-            key="red_slider",
-            help="Все товары с меньшим сроком — красные (или просроченные)"
+            key="red_slider"
         )
     
     with col2:
-        # Жёлтый не может быть меньше текущего красного
         new_yellow = st.slider(
-            "Жёлтый цвет: выделять, если осталось меньше (месяцев)",
+            "Жёлтый: меньше (месяцев)",
             min_value=new_red,
             max_value=12.0,
             value=max(yellow_months, new_red),
             step=0.5,
-            key="yellow_slider",
-            help="Товары между красным и жёлтым — жёлтые"
+            key="yellow_slider"
         )
-    
-    # Синхронизация: если красный изменился — жёлтый не падает ниже
-    if new_yellow < new_red:
-        new_yellow = new_red
-    
-    st.markdown(f"**Текущие пороги:** красный < {new_red} мес, жёлтый < {new_yellow} мес")
     
     if st.button("Сохранить настройки", type="primary", use_container_width=True):
         new_settings = {
@@ -271,4 +254,6 @@ with tab5:
         }
         update_settings(new_settings)
         st.success(f"Сохранено! Красный < {new_red} мес, жёлтый < {new_yellow} мес")
-        st.rerun()  # обновляем приложение, чтобы новые значения применились
+        st.rerun()
+
+st.sidebar.info("Версия 1.7 — разработано с помощью Grok")
