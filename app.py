@@ -154,54 +154,71 @@ with tab2:
 with tab1:
     st.header("Товары в работе")
     inwork = get_inwork()
+    
     if not inwork.empty:
-        search = st.text_input("Поиск по имени / штрих-коду")
+        search = st.text_input("Поиск по имени / штрих-коду / сроку")
         filtered = inwork
         if search:
             search = search.strip()
-            filtered = inwork[inwork['Name'].astype(str).str.contains(search, case=False, na=False) |
-                              inwork['Barcode'].astype(str).str.contains(search, na=False)]
+            filtered = inwork[
+                inwork['Name'].astype(str).str.contains(search, case=False, na=False) |
+                inwork['Barcode'].astype(str).str.contains(search, na=False) |
+                inwork['Expiration'].astype(str).str.contains(search, na=False)
+            ]
         
+        # Подготовка данных
         filtered['ExpDate'] = filtered['Expiration'].apply(parse_date)
-        filtered = filtered.sort_values(by='ExpDate')
-        filtered.drop('ExpDate', axis=1, inplace=True)
+        filtered = filtered.sort_values(by='ExpDate')  # по умолчанию — ближайшие сроки сверху
+        filtered = filtered.drop(columns=['ExpDate'], errors='ignore')
         
         settings = get_settings()
         
-        st.markdown("### Список (ближайшие сроки сверху)")
-        for _, row in filtered.iterrows():
-            bg = get_color(row['Expiration'], settings)
-            text_color = "#000000" if bg in ["#ffff99", "#ffffff"] else "#ffffff"
-            border_color = "#444444" if bg == "#ffffff" else "#888888"
-            
-            st.markdown(
-                f"""
-                <div style="
-                    background-color: {bg};
-                    color: {text_color};
-                    padding: 14px;
-                    margin: 10px 0;
-                    border-radius: 10px;
-                    border: 1px solid {border_color};
-                    font-size: 17px;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-                ">
-                    <strong>{row['Barcode']}</strong> — {row['Name']} — <strong>{row['Expiration']}</strong>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+        # Таблица 1: Основная (Barcode + Name + Expiration) с цветами
+        st.markdown("### 1. Полный список (сроки годности + цвета)")
+        colored_df = filtered.copy()
+        colored_df['Цвет'] = colored_df['Expiration'].apply(lambda x: get_color(x, settings))
+        # Подсветка строк в DataFrame (Streamlit не поддерживает напрямую, поэтому используем HTML)
+        st.dataframe(
+            colored_df[['Barcode', 'Name', 'Expiration']],
+            use_container_width=True,
+            column_config={
+                "Barcode": st.column_config.TextColumn("Штрих-код", width="medium"),
+                "Name": st.column_config.TextColumn("Название товара", width="large"),
+                "Expiration": st.column_config.TextColumn("Срок годности", width="medium"),
+            }
+        )
         
+        # Таблица 2: Только Barcode (сортировка по коду)
+        st.markdown("### 2. Только штрих-коды (сортировка по коду)")
+        st.dataframe(
+            filtered[['Barcode']].sort_values(by='Barcode'),
+            use_container_width=True,
+            hide_index=True,
+            column_config={"Barcode": st.column_config.TextColumn("Штрих-код", width="medium")}
+        )
+        
+        # Таблица 3: Name + Expiration (сортировка по названию или дате)
+        st.markdown("### 3. Название + Срок (сортировка по названию или дате)")
+        st.dataframe(
+            filtered[['Name', 'Expiration']].sort_values(by=['Name', 'Expiration']),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Name": st.column_config.TextColumn("Название товара", width="large"),
+                "Expiration": st.column_config.TextColumn("Срок годности", width="medium")
+            }
+        )
+        
+        # Экспорт
         csv_all = filtered.to_csv(index=False).encode('utf-8')
-        st.download_button("Скачать весь список (CSV)", csv_all, "inwork.csv")
+        st.download_button("Скачать весь список (CSV)", csv_all, "в_работе.csv")
         
-        red_filtered = filtered[filtered['Expiration'].apply(lambda x: get_color(x, settings) in ["#ff9999", "#ffcccc"])]
+        red_filtered = filtered[filtered['Expiration'].apply(lambda x: get_color(x, settings) == 'red')]
         if not red_filtered.empty:
             csv_red = red_filtered.to_csv(index=False).encode('utf-8')
-            st.download_button("Скачать только красные", csv_red, "red_inwork.csv")
+            st.download_button("Скачать только красные", csv_red, "красные.csv")
     else:
         st.info("Пока нет товаров в работе.")
-
 # Заглушки
 with tab3:
     st.header("Приемка + Печать")
