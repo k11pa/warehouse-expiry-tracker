@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-# Подключение к той же базе
+# Подключение
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_info = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
@@ -23,7 +23,7 @@ def get_inwork():
 def get_settings():
     ws = sheet.worksheet("Settings")
     data = ws.get_all_records()
-    return {row.get('Key', ''): row.get('Value', '') for row in data} or {'YellowMonths': '3', 'RedMonths': '2'}
+    return {row.get('Key', ''): row.get('Value', '') for row in data} or {'YellowMonths': '3.0', 'RedMonths': '2.0'}
 
 def parse_date(date_str):
     try:
@@ -37,8 +37,8 @@ def get_color(exp_str, settings):
     if not exp:
         return "#ffffff"
     months_left = relativedelta(exp, datetime.now()).months + (relativedelta(exp, datetime.now()).years * 12)
-    red = int(settings.get('RedMonths', 2))
-    yellow = int(settings.get('YellowMonths', 3))
+    red = float(settings.get('RedMonths', 2.0))
+    yellow = float(settings.get('YellowMonths', 3.0))
     if months_left <= 0 or months_left < red:
         return "#ff9999"   # красный
     if months_left < yellow:
@@ -63,7 +63,7 @@ if not inwork.empty:
             inwork['Expiration'].astype(str).str.contains(search, na=False)
         ]
     
-    # Сортировка по сроку (ближайшие сверху)
+    # Сортировка по сроку
     def sort_key(date_str):
         exp = parse_date(date_str)
         return exp if exp else datetime.max
@@ -72,17 +72,17 @@ if not inwork.empty:
     
     settings = get_settings()
     
-    # Окраска строк
+    # Окраска строк + контрастный текст для тёмной темы
     def highlight_row(row):
         exp = parse_date(row['Expiration'])
         if not exp:
-            return [''] * len(row)
+            return ['background-color: #ffffff; color: #000000'] * len(row)
         months_left = relativedelta(exp, datetime.now()).months + (relativedelta(exp, datetime.now()).years * 12)
-        if months_left <= 0 or months_left < int(settings.get('RedMonths', 2)):
-            return ['background-color: #ff9999'] * len(row)  # красный
-        if months_left < int(settings.get('YellowMonths', 3)):
-            return ['background-color: #ffff99'] * len(row)  # жёлтый
-        return [''] * len(row)
+        if months_left <= 0 or months_left < float(settings.get('RedMonths', 2.0)):
+            return ['background-color: #ff9999; color: #000000'] * len(row)  # красный — чёрный текст
+        if months_left < float(settings.get('YellowMonths', 3.0)):
+            return ['background-color: #ffff99; color: #333333'] * len(row)  # жёлтый — тёмно-серый текст
+        return ['background-color: #ffffff; color: #000000'] * len(row)  # белый — чёрный текст
     
     styled = filtered.style.apply(highlight_row, axis=1)
     
@@ -97,12 +97,12 @@ if not inwork.empty:
     )
     
     # Экспорт
-    csv_all = filtered.to_csv(index=False).encode('utf-8')
+    csv_all = filtered.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
     st.download_button("Скачать весь список (CSV)", csv_all, "в_работе.csv", "text/csv")
     
     red_filtered = filtered[filtered['Expiration'].apply(lambda x: get_color(x, settings) == '#ff9999')]
     if not red_filtered.empty:
-        csv_red = red_filtered.to_csv(index=False).encode('utf-8')
+        csv_red = red_filtered.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button("Скачать только красные", csv_red, "красные.csv", "text/csv")
 else:
     st.info("Пока нет товаров в работе.")
