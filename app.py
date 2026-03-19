@@ -166,28 +166,27 @@ with tab1:
                 inwork['Expiration'].astype(str).str.contains(search, na=False)
             ]
         
-        # Сортировка по сроку (ближайшие сверху) — без создания колонки ExpDate
+        # Сортировка по сроку (ближайшие сверху)
         def sort_key(date_str):
             exp = parse_date(date_str)
-            return exp if exp else datetime.max  # просроченные/неверные даты в конец
+            return exp if exp else datetime.max
         
         filtered = filtered.sort_values(by='Expiration', key=lambda x: x.apply(sort_key))
         
         settings = get_settings()
         
-        # Функция окраски строки
+        # Окраска строк
         def highlight_row(row):
             exp = parse_date(row['Expiration'])
             if not exp:
                 return [''] * len(row)
             months_left = relativedelta(exp, datetime.now()).months + (relativedelta(exp, datetime.now()).years * 12)
             if months_left <= 0 or months_left < int(settings.get('RedMonths', 2)):
-                return ['background-color: #ff9999'] * len(row)  # красный < 2 месяцев или просрочен
+                return ['background-color: #ff9999'] * len(row)  # красный
             if months_left < int(settings.get('YellowMonths', 3)):
-                return ['background-color: #ffff99'] * len(row)  # жёлтый < 3 месяцев
-            return [''] * len(row)  # без цвета
+                return ['background-color: #ffff99'] * len(row)  # жёлтый
+            return [''] * len(row)
         
-        # Применяем окраску
         styled = filtered.style.apply(highlight_row, axis=1)
         
         st.markdown("### Список товаров (сортировка по клику на заголовок)")
@@ -201,15 +200,26 @@ with tab1:
             }
         )
         
-        # Экспорт
-        csv_all = filtered.to_csv(index=False).encode('utf-8')
-        st.download_button("Скачать весь список (CSV)", csv_all, "в_работе.csv", "text/csv")
+        # Экспорт CSV — штрих-коды как текст
+        csv_all = filtered.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+        st.download_button(
+            "Скачать весь список (CSV)",
+            csv_all,
+            "в_работе.csv",
+            "text/csv",
+            help="Штрих-коды сохраняются как обычный текст (не научная нотация)"
+        )
         
-        # Только красные
-        red_filtered = filtered[filtered['Expiration'].apply(lambda x: get_color(x, settings) == '#ff9999' or get_color(x, settings) == '#ffcccc')]
+        red_filtered = filtered[filtered['Expiration'].apply(lambda x: get_color(x, settings) in ['#ff9999', '#ffcccc'])]
         if not red_filtered.empty:
-            csv_red = red_filtered.to_csv(index=False).encode('utf-8')
-            st.download_button("Скачать только красные", csv_red, "красные.csv", "text/csv")
+            csv_red = red_filtered.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
+            st.download_button(
+                "Скачать только красные",
+                csv_red,
+                "красные.csv",
+                "text/csv",
+                help="Штрих-коды как текст"
+            )
     else:
         st.info("Пока нет товаров в работе.")
 # Заглушки
