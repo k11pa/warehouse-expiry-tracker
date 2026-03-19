@@ -75,12 +75,11 @@ st.set_page_config(page_title="Склад — Сроки годности", layo
 tab2, tab1, tab3, tab4, tab5 = st.tabs(["Поставить в работу", "В работе", "Приемка + Печать", "Товары", "Настройки"])
 
 with tab2:
-    st.title("Обход склада — поставить/обновить сроки")
-    st.markdown("Вводи последние 6 цифр или полный штрих-код паллета. Поля очистятся автоматически после добавления.")
+    st.title("Обход склада — обновить сроки при спуске паллета")
+    st.markdown("Вводи последние 6 цифр или полный штрих-код. После обновления поля очистятся автоматически.")
 
     products = get_products()
     
-    # Поля в session_state
     if 'barcode_input' not in st.session_state:
         st.session_state.barcode_input = ""
     if 'expiration_input' not in st.session_state:
@@ -94,7 +93,6 @@ with tab2:
     
     barcode = barcode_input.strip() if barcode_input else None
     
-    # Показываем результат ТОЛЬКО если поле ввода НЕ пустое
     if barcode:
         barcode_clean = barcode
         
@@ -122,24 +120,30 @@ with tab2:
                         if row['Barcode'] in current_inwork['Barcode'].values:
                             current_expiration = current_inwork[current_inwork['Barcode'] == row['Barcode']]['Expiration'].iloc[0]
                             st.session_state.expiration_input = current_expiration
-                            st.info(f"Уже в работе. Текущий срок: **{current_expiration}**")
                     
                     st.markdown(f"**Товар:** {name}")
                     st.markdown(f"**Штрих-код:** {row['Barcode']}")
                     
-                    expiration = st.text_input("Срок годности (ДД.ММ.ГГ)", value=st.session_state.expiration_input, placeholder="15.12.26")
+                    expiration = st.text_input("Новый срок годности (ДД.ММ.ГГ)", value=st.session_state.expiration_input, placeholder="15.12.26")
                     
-                    if st.button("✅ Добавить / Обновить", type="primary", use_container_width=True):
+                    if st.button("✅ Обновить срок", type="primary", use_container_width=True):
                         if not expiration.strip():
                             st.error("Укажи срок годности!")
                         else:
                             update_or_add_inwork(row['Barcode'], name, expiration)
-                            st.success("Готово!")
+                            st.success("Срок успешно обновлён!")
+                            # Звук успеха (короткий beep)
+                            st.markdown(
+                                """
+                                <audio autoplay>
+                                    <source src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" type="audio/mpeg">
+                                </audio>
+                                """,
+                                unsafe_allow_html=True
+                            )
                             time.sleep(1)  # задержка для API
-                            # Очищаем оба поля
                             st.session_state.barcode_input = ""
                             st.session_state.expiration_input = ""
-                            # НЕ rerun — чтобы не искать заново
             else:
                 st.error(f"Штрих-код **{barcode_clean}** не найден.")
                 st.markdown("Обнови базу через Excel.")
