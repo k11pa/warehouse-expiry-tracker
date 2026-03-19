@@ -166,24 +166,25 @@ with tab1:
                 inwork['Expiration'].astype(str).str.contains(search, na=False)
             ]
         
-        # Подготовка данных
-        filtered['ExpDate'] = filtered['Expiration'].apply(parse_date)
-        filtered = filtered.sort_values(by='ExpDate')  # по умолчанию — ближайшие сверху
+        # Сортировка по сроку (ближайшие сверху) — без создания колонки ExpDate
+        def sort_key(date_str):
+            exp = parse_date(date_str)
+            return exp if exp else datetime.max  # просроченные/неверные даты в конец
+        
+        filtered = filtered.sort_values(by='Expiration', key=lambda x: x.apply(sort_key))
         
         settings = get_settings()
-        red_threshold = int(settings.get('RedMonths', 2))
-        yellow_threshold = int(settings.get('YellowMonths', 3))
         
-        # Функция для окраски строки
+        # Функция окраски строки
         def highlight_row(row):
             exp = parse_date(row['Expiration'])
             if not exp:
-                return [''] * len(row)  # без цвета
+                return [''] * len(row)
             months_left = relativedelta(exp, datetime.now()).months + (relativedelta(exp, datetime.now()).years * 12)
-            if months_left <= 0 or months_left < red_threshold:
-                return ['background-color: #ff9999'] * len(row)  # красный
-            if months_left < yellow_threshold:
-                return ['background-color: #ffff99'] * len(row)  # жёлтый
+            if months_left <= 0 or months_left < int(settings.get('RedMonths', 2)):
+                return ['background-color: #ff9999'] * len(row)  # красный < 2 месяцев или просрочен
+            if months_left < int(settings.get('YellowMonths', 3)):
+                return ['background-color: #ffff99'] * len(row)  # жёлтый < 3 месяцев
             return [''] * len(row)  # без цвета
         
         # Применяем окраску
@@ -204,7 +205,8 @@ with tab1:
         csv_all = filtered.to_csv(index=False).encode('utf-8')
         st.download_button("Скачать весь список (CSV)", csv_all, "в_работе.csv", "text/csv")
         
-        red_filtered = filtered[filtered['Expiration'].apply(lambda x: get_color(x, settings) == 'red')]
+        # Только красные
+        red_filtered = filtered[filtered['Expiration'].apply(lambda x: get_color(x, settings) == '#ff9999' or get_color(x, settings) == '#ffcccc')]
         if not red_filtered.empty:
             csv_red = red_filtered.to_csv(index=False).encode('utf-8')
             st.download_button("Скачать только красные", csv_red, "красные.csv", "text/csv")
