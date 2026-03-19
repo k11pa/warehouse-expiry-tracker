@@ -221,31 +221,48 @@ with tab4:
 
 with tab5:
     st.header("Настройки цветов сроков годности")
-    st.markdown("Установи порог для красного цвета — жёлтый автоматически станет на 0.5 месяца дальше. Сохрани — изменения применятся сразу.")
+    st.markdown("Настраивай пороги отдельно, но жёлтый всегда будет не меньше красного. Сохрани — изменения применятся сразу во всём приложении и в отчёте.")
 
     settings = get_settings()
     
     # Текущие значения
     red_months = float(settings.get('RedMonths', 2.0))
-    yellow_months = float(settings.get('YellowMonths', 2.5))  # по умолчанию red + 0.5
+    yellow_months = float(settings.get('YellowMonths', 3.0))
     
-    # Слайдер только для красного
-    new_red = st.slider(
-        "Красный цвет: выделять, если осталось меньше (месяцев)",
-        min_value=0.5,
-        max_value=12.0,
-        value=red_months,
-        step=0.5,
-        help="Товары с меньшим сроком — красные (или просроченные)"
-    )
+    # Гарантируем, что жёлтый ≥ красный
+    if yellow_months < red_months:
+        yellow_months = red_months
     
-    # Жёлтый всегда red + 0.5
-    new_yellow = new_red + 0.5
+    col1, col2 = st.columns(2)
     
-    st.markdown(f"**Жёлтый цвет:** автоматически {new_yellow} месяцев (красный + 0.5)")
+    with col1:
+        new_red = st.slider(
+            "Красный цвет: выделять, если осталось меньше (месяцев)",
+            min_value=0.5,
+            max_value=12.0,
+            value=red_months,
+            step=0.5,
+            key="red_slider",
+            help="Все товары с меньшим сроком — красные (или просроченные)"
+        )
     
-    # Показываем значение жёлтого (только для информации)
-    st.info(f"Жёлтый: товары между {new_red} и {new_yellow} месяцев будут жёлтыми")
+    with col2:
+        # Жёлтый не может быть меньше текущего красного
+        new_yellow = st.slider(
+            "Жёлтый цвет: выделять, если осталось меньше (месяцев)",
+            min_value=new_red,
+            max_value=12.0,
+            value=max(yellow_months, new_red),
+            step=0.5,
+            key="yellow_slider",
+            help="Товары между красным и жёлтым — жёлтые"
+        )
+    
+    # Синхронизация: если красный изменился — жёлтый не падает ниже
+    if new_yellow < new_red:
+        new_yellow = new_red
+    
+    st.markdown(f"**Текущие пороги:** красный < {new_red} мес, жёлтый < {new_yellow} мес")
     
     if st.button("Сохранить настройки", type="primary", use_container_width=True):
         new_settings = {
@@ -254,4 +271,4 @@ with tab5:
         }
         update_settings(new_settings)
         st.success(f"Сохранено! Красный < {new_red} мес, жёлтый < {new_yellow} мес")
-        st.rerun()  # обновляем приложение
+        st.rerun()  # обновляем приложение, чтобы новые значения применились
