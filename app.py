@@ -221,34 +221,31 @@ with tab4:
 
 with tab5:
     st.header("Настройки цветов сроков годности")
-    st.markdown("Установи пороги в месяцах для красного и жёлтого цвета. Сохрани — изменения применятся сразу.")
+    st.markdown("Установи порог для красного цвета — жёлтый автоматически станет на 0.5 месяца дальше. Сохрани — изменения применятся сразу.")
 
     settings = get_settings()
     
-    red_months = float(settings.get('RedMonths', 2))
-    yellow_months = float(settings.get('YellowMonths', 3))
+    # Текущие значения
+    red_months = float(settings.get('RedMonths', 2.0))
+    yellow_months = float(settings.get('YellowMonths', 2.5))  # по умолчанию red + 0.5
     
-    col1, col2 = st.columns(2)
+    # Слайдер только для красного
+    new_red = st.slider(
+        "Красный цвет: выделять, если осталось меньше (месяцев)",
+        min_value=0.5,
+        max_value=12.0,
+        value=red_months,
+        step=0.5,
+        help="Товары с меньшим сроком — красные (или просроченные)"
+    )
     
-    with col1:
-        new_red = st.slider(
-            "Красный: меньше (месяцев)",
-            min_value=0.5,
-            max_value=12.0,
-            value=red_months,
-            step=0.5,
-            help="Товары с меньшим сроком — красные (или просроченные)"
-        )
+    # Жёлтый всегда red + 0.5
+    new_yellow = new_red + 0.5
     
-    with col2:
-        new_yellow = st.slider(
-            "Жёлтый: меньше (месяцев)",
-            min_value=0.5,
-            max_value=12.0,
-            value=yellow_months,
-            step=0.5,
-            help="Товары между красным и жёлтым — жёлтые"
-        )
+    st.markdown(f"**Жёлтый цвет:** автоматически {new_yellow} месяцев (красный + 0.5)")
+    
+    # Показываем значение жёлтого (только для информации)
+    st.info(f"Жёлтый: товары между {new_red} и {new_yellow} месяцев будут жёлтыми")
     
     if st.button("Сохранить настройки", type="primary", use_container_width=True):
         new_settings = {
@@ -257,6 +254,4 @@ with tab5:
         }
         update_settings(new_settings)
         st.success(f"Сохранено! Красный < {new_red} мес, жёлтый < {new_yellow} мес")
-        st.rerun()
-
-st.sidebar.info("Версия 1.6 — разработано с помощью Grok")
+        st.rerun()  # обновляем приложение
