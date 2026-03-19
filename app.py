@@ -14,6 +14,7 @@ CLIENT = gspread.authorize(creds)
 SHEET_ID = "1q8RdFS_XBl0N7QhdBITQzCQXCLGEo2kkLEpDc3Jn5BM"
 sheet = CLIENT.open_by_key(SHEET_ID)
 
+# Функции
 def get_products():
     ws = sheet.worksheet("Products")
     df = pd.DataFrame(ws.get_all_records())
@@ -36,11 +37,11 @@ def update_or_add_inwork(barcode, name, expiration):
     
     if barcode_clean in df['Barcode'].values:
         row_index = df[df['Barcode'] == barcode_clean].index[0] + 2
-        ws.update_cell(row_index, 3, expiration)
+        ws.update_cell(row_index, 3, expiration)  # столбец C = Expiration
     else:
         ws.append_row([barcode_clean, name, expiration])
     
-    time.sleep(2)  # задержка для стабильности API
+    time.sleep(1)  # минимальная задержка для стабильности API
 
 def parse_date(date_str):
     try:
@@ -54,20 +55,24 @@ def get_color(exp_str, settings):
     if not exp:
         return "#ffffff"
     months_left = relativedelta(exp, datetime.now()).months + (relativedelta(exp, datetime.now()).years * 12)
-    red = int(settings.get('RedMonths', 2))
-    yellow = int(settings.get('YellowMonths', 3))
-    if months_left <= 0:
-        return "#ffcccc"
-    if months_left < red:
-        return "#ff9999"
+    red = float(settings.get('RedMonths', 2))
+    yellow = float(settings.get('YellowMonths', 3))
+    if months_left <= 0 or months_left < red:
+        return "#ff9999"  # красный
     if months_left < yellow:
-        return "#ffff99"
-    return "#ffffff"
+        return "#ffff99"  # жёлтый
+    return "#ffffff"  # белый
 
 def get_settings():
     ws = sheet.worksheet("Settings")
     data = ws.get_all_records()
     return {row.get('Key', ''): row.get('Value', '') for row in data} or {'YellowMonths': '3', 'RedMonths': '2'}
+
+def update_settings(settings):
+    ws = sheet.worksheet("Settings")
+    ws.clear()
+    data = [['Key', 'Value']] + [[k, v] for k, v in settings.items()]
+    ws.update(data)
 
 # Интерфейс
 st.set_page_config(page_title="Склад — Сроки годности", layout="wide")
@@ -75,11 +80,12 @@ st.set_page_config(page_title="Склад — Сроки годности", layo
 tab2, tab1, tab3, tab4, tab5 = st.tabs(["Поставить в работу", "В работе", "Приемка + Печать", "Товары", "Настройки"])
 
 with tab2:
-    st.title("Обход склада — обновить сроки при спуске паллета")
-    st.markdown("Вводи последние 6 цифр или полный штрих-код. После обновления поля очистятся автоматически.")
+    st.title("Обход склада — поставить/обновить сроки")
+    st.markdown("Вводи последние 6 цифр или полный штрих-код паллета. Поля очистятся автоматически после добавления.")
 
     products = get_products()
     
+    # Поля в session_state
     if 'barcode_input' not in st.session_state:
         st.session_state.barcode_input = ""
     if 'expiration_input' not in st.session_state:
@@ -124,24 +130,16 @@ with tab2:
                     st.markdown(f"**Товар:** {name}")
                     st.markdown(f"**Штрих-код:** {row['Barcode']}")
                     
-                    expiration = st.text_input("Новый срок годности (ДД.ММ.ГГ)", value=st.session_state.expiration_input, placeholder="15.12.26")
+                    expiration = st.text_input("Срок годности (ДД.ММ.ГГ)", value=st.session_state.expiration_input, placeholder="15.12.26")
                     
-                    if st.button("✅ Обновить срок", type="primary", use_container_width=True):
+                    if st.button("✅ Добавить / Обновить", type="primary", use_container_width=True):
                         if not expiration.strip():
                             st.error("Укажи срок годности!")
                         else:
                             update_or_add_inwork(row['Barcode'], name, expiration)
-                            st.success("Срок успешно обновлён!")
-                            # Звук успеха (короткий beep)
-                            st.markdown(
-                                """
-                                <audio autoplay>
-                                    <source src="https://assets.mixkit.co/sfx/preview/mixkit-correct-answer-tone-2870.mp3" type="audio/mpeg">
-                                </audio>
-                                """,
-                                unsafe_allow_html=True
-                            )
+                            st.success("Готово!")
                             time.sleep(1)  # задержка для API
+                            # Очищаем поля
                             st.session_state.barcode_input = ""
                             st.session_state.expiration_input = ""
             else:
@@ -151,6 +149,7 @@ with tab2:
             st.error("База пуста. Загрузи Excel.")
     else:
         st.info("Введи код паллета для поиска.")
+
 with tab1:
     st.header("Товары в работе")
     inwork = get_inwork()
@@ -200,28 +199,17 @@ with tab1:
             }
         )
         
-        # Экспорт CSV — штрих-коды как текст
+        # Экспорт
         csv_all = filtered.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-        st.download_button(
-            "Скачать весь список (CSV)",
-            csv_all,
-            "в_работе.csv",
-            "text/csv",
-            help="Штрих-коды сохраняются как обычный текст (не научная нотация)"
-        )
+        st.download_button("Скачать весь список (CSV)", csv_all, "в_работе.csv", "text/csv")
         
-        red_filtered = filtered[filtered['Expiration'].apply(lambda x: get_color(x, settings) in ['#ff9999', '#ffcccc'])]
+        red_filtered = filtered[filtered['Expiration'].apply(lambda x: get_color(x, settings) == '#ff9999')]
         if not red_filtered.empty:
             csv_red = red_filtered.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
-            st.download_button(
-                "Скачать только красные",
-                csv_red,
-                "красные.csv",
-                "text/csv",
-                help="Штрих-коды как текст"
-            )
+            st.download_button("Скачать только красные", csv_red, "красные.csv", "text/csv")
     else:
         st.info("Пока нет товаров в работе.")
+
 # Заглушки
 with tab3:
     st.header("Приемка + Печать")
@@ -233,43 +221,42 @@ with tab4:
 
 with tab5:
     st.header("Настройки цветов сроков годности")
-    st.markdown("Установи, сколько месяцев до срока для красного и жёлтого цвета. Сохрани — изменения применятся сразу во всём приложении и в отчёте для начальства.")
+    st.markdown("Установи пороги в месяцах для красного и жёлтого цвета. Сохрани — изменения применятся сразу.")
 
     settings = get_settings()
     
-    # Текущие значения (если есть)
-    red_months = int(settings.get('RedMonths', 2))
-    yellow_months = int(settings.get('YellowMonths', 3))
+    red_months = float(settings.get('RedMonths', 2))
+    yellow_months = float(settings.get('YellowMonths', 3))
     
     col1, col2 = st.columns(2)
     
     with col1:
         new_red = st.slider(
-            "Красный цвет: выделять, если осталось меньше (месяцев)",
-            min_value=1,
-            max_value=12,
+            "Красный: меньше (месяцев)",
+            min_value=0.5,
+            max_value=12.0,
             value=red_months,
-            step=1,
-            help="Все товары с меньшим сроком будут красными (или просроченные)"
+            step=0.5,
+            help="Товары с меньшим сроком — красные (или просроченные)"
         )
     
     with col2:
         new_yellow = st.slider(
-            "Жёлтый цвет: выделять, если осталось меньше (месяцев)",
-            min_value=1,
-            max_value=12,
+            "Жёлтый: меньше (месяцев)",
+            min_value=0.5,
+            max_value=12.0,
             value=yellow_months,
-            step=1,
-            help="Товары между красным и жёлтым порогом будут жёлтыми"
+            step=0.5,
+            help="Товары между красным и жёлтым — жёлтые"
         )
     
     if st.button("Сохранить настройки", type="primary", use_container_width=True):
         new_settings = {
-            'RedMonths': new_red,
-            'YellowMonths': new_yellow
+            'RedMonths': str(new_red),
+            'YellowMonths': str(new_yellow)
         }
         update_settings(new_settings)
-        st.success(f"Сохранено! Теперь: красный < {new_red} мес, жёлтый < {new_yellow} мес")
-        st.rerun()  # обновляем приложение, чтобы новые значения применились
+        st.success(f"Сохранено! Красный < {new_red} мес, жёлтый < {new_yellow} мес")
+        st.rerun()
 
 st.sidebar.info("Версия 1.6 — разработано с помощью Grok")
