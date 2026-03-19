@@ -232,7 +232,44 @@ with tab4:
     st.info("Функционал в разработке")
 
 with tab5:
-    st.header("Настройки")
-    st.info("Функционал в разработке")
+    st.header("Настройки цветов сроков годности")
+    st.markdown("Установи, сколько месяцев до срока для красного и жёлтого цвета. Сохрани — изменения применятся сразу во всём приложении и в отчёте для начальства.")
 
-st.sidebar.info("Версия 1.5 — разработано с помощью Grok")
+    settings = get_settings()
+    
+    # Текущие значения (если есть)
+    red_months = int(settings.get('RedMonths', 2))
+    yellow_months = int(settings.get('YellowMonths', 3))
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        new_red = st.slider(
+            "Красный цвет: выделять, если осталось меньше (месяцев)",
+            min_value=1,
+            max_value=12,
+            value=red_months,
+            step=1,
+            help="Все товары с меньшим сроком будут красными (или просроченные)"
+        )
+    
+    with col2:
+        new_yellow = st.slider(
+            "Жёлтый цвет: выделять, если осталось меньше (месяцев)",
+            min_value=1,
+            max_value=12,
+            value=yellow_months,
+            step=1,
+            help="Товары между красным и жёлтым порогом будут жёлтыми"
+        )
+    
+    if st.button("Сохранить настройки", type="primary", use_container_width=True):
+        new_settings = {
+            'RedMonths': new_red,
+            'YellowMonths': new_yellow
+        }
+        update_settings(new_settings)
+        st.success(f"Сохранено! Теперь: красный < {new_red} мес, жёлтый < {new_yellow} мес")
+        st.rerun()  # обновляем приложение, чтобы новые значения применились
+
+st.sidebar.info("Версия 1.6 — разработано с помощью Grok")
