@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-# Подключение
+# Подключение к той же базе
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_info = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
@@ -39,9 +39,7 @@ def get_color(exp_str, settings):
     months_left = relativedelta(exp, datetime.now()).months + (relativedelta(exp, datetime.now()).years * 12)
     red = int(settings.get('RedMonths', 2))
     yellow = int(settings.get('YellowMonths', 3))
-    if months_left <= 0:
-        return "#ffcccc"   # просрочен
-    if months_left < red:
+    if months_left <= 0 or months_left < red:
         return "#ff9999"   # красный
     if months_left < yellow:
         return "#ffff99"   # жёлтый
@@ -49,81 +47,63 @@ def get_color(exp_str, settings):
 
 # Интерфейс
 st.set_page_config(page_title="Отчёт по срокам в работе", layout="wide")
-
-st.title("Товары в работе — отчёт для руководства")
-st.markdown("Обновляется автоматически. Выбери фильтр ниже.")
-
-# Фильтр по срочности
-filter_option = st.selectbox(
-    "Показать товары:",
-    ["Всё сразу", "Только красные (критические)", "Только жёлтые", "Только зелёные (нормальные сроки)"],
-    index=0
-)
+st.title("Товары в работе")
+st.markdown("Обновляется автоматически. Сортировка по клику на заголовок.")
 
 inwork = get_inwork()
 
 if not inwork.empty:
-    search = st.text_input("Поиск по имени или штрих-коду", "")
-
-    # Подготовка данных
-    settings = get_settings()
-    inwork['ExpDate'] = inwork['Expiration'].apply(parse_date)
-    inwork['Color'] = inwork['Expiration'].apply(lambda x: get_color(x, settings))
-
-    filtered = inwork.copy()
-
+    search = st.text_input("Поиск по имени / штрих-коду / сроку", "")
+    filtered = inwork
     if search:
         search = search.strip()
-        if len(search) == 6:
-            filtered = filtered[filtered['Barcode'].str.endswith(search)]
-        else:
-            filtered = filtered[
-                filtered['Name'].astype(str).str.contains(search, case=False, na=False) |
-                filtered['Barcode'].astype(str).str.contains(search, na=False)
-            ]
-
-    # Фильтр по цвету
-    if filter_option == "Только красные (критические)":
-        filtered = filtered[filtered['Color'].isin(["#ff9999", "#ffcccc"])]
-    elif filter_option == "Только жёлтые":
-        filtered = filtered[filtered['Color'] == "#ffff99"]
-    elif filter_option == "Только зелёные (нормальные сроки)":
-        filtered = filtered[filtered['Color'] == "#ffffff"]
-
-    # Сортировка: от ближайшего срока к дальнему
-    filtered = filtered.sort_values(by='ExpDate')
-
-    st.markdown(f"**Найдено товаров: {len(filtered)}** (от ближайших сроков к дальним)")
-
-    # Улучшенный вывод для тёмной темы — белый текст + контрастная рамка
-    for _, row in filtered.iterrows():
-        bg = row['Color']
-        text_color = "#000000" if bg in ["#ffff99", "#ffffff"] else "#ffffff"  # чёрный текст на светлом фоне, белый на тёмном
-        border_color = "#444444" if bg == "#ffffff" else "#888888"  # контрастная рамка в тёмной теме
-        
-        st.markdown(
-            f"""
-            <div style="
-                background-color: {bg};
-                color: {text_color};
-                padding: 14px;
-                margin: 10px 0;
-                border-radius: 10px;
-                border: 1px solid {border_color};
-                font-size: 17px;
-                box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-            ">
-                <strong>{row['Barcode']}</strong> — {row['Name']} — <strong>{row['Expiration']}</strong>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
+        filtered = inwork[
+            inwork['Name'].astype(str).str.contains(search, case=False, na=False) |
+            inwork['Barcode'].astype(str).str.contains(search, na=False) |
+            inwork['Expiration'].astype(str).str.contains(search, na=False)
+        ]
+    
+    # Сортировка по сроку (ближайшие сверху)
+    def sort_key(date_str):
+        exp = parse_date(date_str)
+        return exp if exp else datetime.max
+    
+    filtered = filtered.sort_values(by='Expiration', key=lambda x: x.apply(sort_key))
+    
+    settings = get_settings()
+    
+    # Окраска строк
+    def highlight_row(row):
+        exp = parse_date(row['Expiration'])
+        if not exp:
+            return [''] * len(row)
+        months_left = relativedelta(exp, datetime.now()).months + (relativedelta(exp, datetime.now()).years * 12)
+        if months_left <= 0 or months_left < int(settings.get('RedMonths', 2)):
+            return ['background-color: #ff9999'] * len(row)  # красный
+        if months_left < int(settings.get('YellowMonths', 3)):
+            return ['background-color: #ffff99'] * len(row)  # жёлтый
+        return [''] * len(row)
+    
+    styled = filtered.style.apply(highlight_row, axis=1)
+    
+    st.dataframe(
+        styled,
+        use_container_width=True,
+        column_config={
+            "Barcode": st.column_config.TextColumn("Штрих-код", width="medium"),
+            "Name": st.column_config.TextColumn("Название товара", width="large"),
+            "Expiration": st.column_config.TextColumn("Срок годности", width="medium"),
+        }
+    )
+    
     # Экспорт
-    export_df = filtered.drop(columns=['ExpDate', 'Color'], errors='ignore')
-    csv = export_df.to_csv(index=False).encode('utf-8')
-    st.download_button("Скачать отчёт в CSV", csv, "отчет_в_работе.csv", "text/csv")
-
+    csv_all = filtered.to_csv(index=False).encode('utf-8')
+    st.download_button("Скачать весь список (CSV)", csv_all, "в_работе.csv", "text/csv")
+    
+    red_filtered = filtered[filtered['Expiration'].apply(lambda x: get_color(x, settings) == '#ff9999')]
+    if not red_filtered.empty:
+        csv_red = red_filtered.to_csv(index=False).encode('utf-8')
+        st.download_button("Скачать только красные", csv_red, "красные.csv", "text/csv")
 else:
     st.info("Пока нет товаров в работе.")
 
