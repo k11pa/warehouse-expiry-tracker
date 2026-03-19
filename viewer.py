@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-# Подключение
+# Подключение к той же базе
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds_info = st.secrets["gcp_service_account"]
 creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
@@ -63,7 +63,7 @@ if not inwork.empty:
             inwork['Expiration'].astype(str).str.contains(search, na=False)
         ]
     
-    # Сортировка по сроку
+    # Сортировка по сроку (ближайшие сверху)
     def sort_key(date_str):
         exp = parse_date(date_str)
         return exp if exp else datetime.max
@@ -72,7 +72,7 @@ if not inwork.empty:
     
     settings = get_settings()
     
-    # Окраска строк + контрастный текст для тёмной темы
+    # Окраска строк с контрастным текстом
     def highlight_row(row):
         exp = parse_date(row['Expiration'])
         if not exp:
