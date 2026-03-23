@@ -4,26 +4,38 @@ from oauth2client.service_account import ServiceAccountCredentials
 import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import time
 
-# Подключение к той же базе
-SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds_info = st.secrets["gcp_service_account"]
-creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
-CLIENT = gspread.authorize(creds)
-SHEET_ID = "1q8RdFS_XBl0N7QhdBITQzCQXCLGEo2kkLEpDc3Jn5BM"
-sheet = CLIENT.open_by_key(SHEET_ID)
+# Подключение — с обработкой ошибок
+try:
+    SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds_info = st.secrets["gcp_service_account"]
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_info.to_dict(), SCOPE)
+    CLIENT = gspread.authorize(creds)
+    SHEET_ID = "1q8RdFS_XBl0N7QhdBITQzCQXCLGEo2kkLEpDc3Jn5BM"
+    sheet = CLIENT.open_by_key(SHEET_ID)
+except Exception as e:
+    st.error("Ошибка подключения к Google Sheets. Подожди 30–60 секунд и обнови страницу.")
+    st.stop()
 
 def get_inwork():
-    ws = sheet.worksheet("InWork")
-    df = pd.DataFrame(ws.get_all_records())
-    if not df.empty and 'Barcode' in df.columns:
-        df['Barcode'] = df['Barcode'].astype(str).str.strip()
-    return df
+    try:
+        ws = sheet.worksheet("InWork")
+        df = pd.DataFrame(ws.get_all_records())
+        if not df.empty and 'Barcode' in df.columns:
+            df['Barcode'] = df['Barcode'].astype(str).str.strip()
+        return df
+    except gspread.exceptions.APIError:
+        st.warning("Временная ошибка Google Sheets. Подожди 30–60 секунд и обнови страницу.")
+        return pd.DataFrame()
 
 def get_settings():
-    ws = sheet.worksheet("Settings")
-    data = ws.get_all_records()
-    return {row.get('Key', ''): row.get('Value', '') for row in data} or {'YellowMonths': '3.0', 'RedMonths': '2.0'}
+    try:
+        ws = sheet.worksheet("Settings")
+        data = ws.get_all_records()
+        return {row.get('Key', ''): row.get('Value', '') for row in data} or {'YellowMonths': '3.0', 'RedMonths': '2.0'}
+    except:
+        return {'YellowMonths': '3.0', 'RedMonths': '2.0'}
 
 def parse_date(date_str):
     try:
@@ -40,10 +52,10 @@ def get_color(exp_str, settings):
     red = float(settings.get('RedMonths', 2.0))
     yellow = float(settings.get('YellowMonths', 3.0))
     if months_left <= 0 or months_left < red:
-        return "#ff9999"   # красный
+        return "#ff9999"
     if months_left < yellow:
-        return "#ffff99"   # жёлтый
-    return "#ffffff"       # белый
+        return "#ffff99"
+    return "#ffffff"
 
 # Интерфейс
 st.set_page_config(page_title="Отчёт по срокам в работе", layout="wide")
@@ -72,17 +84,17 @@ if not inwork.empty:
     
     settings = get_settings()
     
-    # Окраска строк с контрастным текстом
+    # Окраска строк
     def highlight_row(row):
         exp = parse_date(row['Expiration'])
         if not exp:
-            return ['background-color: #ffffff; color: #000000'] * len(row)
+            return [''] * len(row)
         months_left = relativedelta(exp, datetime.now()).months + (relativedelta(exp, datetime.now()).years * 12)
         if months_left <= 0 or months_left < float(settings.get('RedMonths', 2.0)):
-            return ['background-color: #ff9999; color: #000000'] * len(row)  # красный — чёрный текст
+            return ['background-color: #ff9999'] * len(row)  # красный
         if months_left < float(settings.get('YellowMonths', 3.0)):
-            return ['background-color: #ffff99; color: #333333'] * len(row)  # жёлтый — тёмно-серый текст
-        return ['background-color: #ffffff; color: #000000'] * len(row)  # белый — чёрный текст
+            return ['background-color: #ffff99'] * len(row)  # жёлтый
+        return [''] * len(row)
     
     styled = filtered.style.apply(highlight_row, axis=1)
     
