@@ -150,9 +150,34 @@ with tab2:
 
 with tab1:
     st.header("Товары в работе")
+    
+    # Загружаем данные
     inwork = get_inwork()
+    products = get_products()
     
     if not inwork.empty:
+        # === АВТОМАТИЧЕСКАЯ ОЧИСТКА: удаляем товары со статусом 2 ===
+        if not products.empty:
+            products['Barcode'] = products['Barcode'].astype(str).str.strip()
+            products['Status'] = products['Status'].astype(str).str.strip()
+            
+            # Находим все баркоды, у которых статус содержит "2"
+            ended_barcodes = products[products['Status'].str.contains('2', na=False)]['Barcode'].tolist()
+            
+            # Удаляем их из InWork
+            if ended_barcodes:
+                inwork = inwork[~inwork['Barcode'].isin(ended_barcodes)]
+                
+                # Сохраняем очищенный список обратно в Google Sheets
+                if not inwork.empty:
+                    update_inwork(inwork)
+                else:
+                    # Если после очистки ничего не осталось — полностью очищаем таблицу
+                    ws = sheet.worksheet("InWork")
+                    ws.clear()
+                    ws.update([["Barcode", "Name", "Expiration"]])  # только заголовки
+        
+        # === Обычная работа со списком ===
         search = st.text_input("Поиск по имени / штрих-коду / сроку")
         filtered = inwork
         if search:
@@ -163,6 +188,7 @@ with tab1:
                 inwork['Expiration'].astype(str).str.contains(search, na=False)
             ]
         
+        # Сортировка по сроку (ближайшие сверху)
         def sort_key(date_str):
             exp = parse_date(date_str)
             return exp if exp else datetime.max
@@ -171,6 +197,7 @@ with tab1:
         
         settings = get_settings()
         
+        # Окраска строк
         def highlight_row(row):
             exp = parse_date(row['Expiration'])
             if not exp:
@@ -184,6 +211,7 @@ with tab1:
         
         styled = filtered.style.apply(highlight_row, axis=1)
         
+        st.markdown("### Список товаров (сортировка по клику на заголовок)")
         st.dataframe(
             styled,
             use_container_width=True,
@@ -194,6 +222,7 @@ with tab1:
             }
         )
         
+        # Экспорт
         csv_all = filtered.to_csv(index=False, encoding='utf-8-sig').encode('utf-8-sig')
         st.download_button("Скачать весь список (CSV)", csv_all, "в_работе.csv", "text/csv")
         
